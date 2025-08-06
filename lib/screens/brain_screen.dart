@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../config/brain_theme.dart';
+import 'where_is_my_screen.dart';
+import 'docs_saver_screen.dart';
 
 class BrainScreen extends StatelessWidget {
   const BrainScreen({super.key});
@@ -8,54 +10,138 @@ class BrainScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: BrainTheme.pagePadding,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Brain & Learning',
-              style: GoogleFonts.inter(
-                fontSize: 28,
-                fontWeight: FontWeight.w700,
-                color: Colors.grey[800],
-              ),
-            ),
-            const SizedBox(height: 8),
+            Text('Brain & Learning', style: BrainTheme.headingLarge),
+            SizedBox(height: BrainTheme.spacingS),
             Text(
               'Enhance your cognitive skills and knowledge',
-              style: GoogleFonts.inter(fontSize: 16, color: Colors.grey[600]),
+              style: BrainTheme.bodyLarge,
             ),
-            const SizedBox(height: 32),
+            SizedBox(height: BrainTheme.spacingXL),
             Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.psychology, size: 80, color: Colors.grey[400]),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Brain features coming soon!',
-                      style: GoogleFonts.inter(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[600],
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Memory games, learning tools, and cognitive exercises',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: Colors.grey[500],
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
+              child: GridView.count(
+                crossAxisCount: 2,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+                childAspectRatio: 1.1,
+                children: [
+                  _buildCard(
+                    context,
+                    'Language',
+                    Icons.language,
+                    'Learn new languages with interactive exercises',
+                    () {
+                      // TODO: Navigate to specific feature
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Language coming soon!'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildCard(
+                    context,
+                    'Math',
+                    Icons.calculate,
+                    'Improve your mathematical skills',
+                    () {
+                      // TODO: Navigate to specific feature
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Math coming soon!'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildCard(
+                    context,
+                    'Knowledge',
+                    Icons.quiz,
+                    'Test and expand your knowledge',
+                    () {
+                      // TODO: Navigate to specific feature
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Knowledge coming soon!'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildCard(
+                    context,
+                    'Where Is My',
+                    Icons.search,
+                    'Track items you\'ve lent to others',
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const WhereIsMyScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  _buildCard(
+                    context,
+                    'Docs Saver',
+                    Icons.folder,
+                    'Store and organize documents & manuals',
+                    () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const DocsSaverScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCard(
+    BuildContext context,
+    String title,
+    IconData icon,
+    String description,
+    VoidCallback onTap,
+  ) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BrainTheme.cardDecoration,
+        child: Padding(
+          padding: BrainTheme.listItemPadding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: BrainTheme.valueSmall),
+              SizedBox(height: BrainTheme.spacingXS),
+              Divider(color: BrainTheme.borderColor, thickness: 1),
+              SizedBox(height: BrainTheme.spacingS),
+              Icon(icon, size: 28, color: BrainTheme.primaryColor),
+              SizedBox(height: BrainTheme.spacingXS),
+              Expanded(
+                child: Text(
+                  description,
+                  style: BrainTheme.bodySmall.copyWith(height: 1.2),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../auth_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -29,9 +28,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _signOut(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (context) => const AuthScreen()),
-    );
+    // Navigate back to the main screen, which will be handled by AuthWrapper
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   Future<void> _editProfile(BuildContext context) async {

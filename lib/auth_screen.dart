@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:io';
-import 'home_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -41,10 +40,8 @@ class _AuthScreenState extends State<AuthScreen> {
           );
 
       if (userCredential.user != null) {
-        // Navigate to home screen
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-        );
+        // AuthWrapper will automatically handle navigation
+        // No need to manually navigate
       }
     } on FirebaseAuthException catch (e) {
       String message = 'Authentication failed';
@@ -119,10 +116,8 @@ class _AuthScreenState extends State<AuthScreen> {
       );
 
       if (userCredential.user != null) {
-        // Navigate to home screen
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const HomeScreen()),
-        );
+        // AuthWrapper will automatically handle navigation
+        // No need to manually navigate
       }
     } on SignInWithAppleAuthorizationException catch (e) {
       String message = 'Apple Sign In failed';
