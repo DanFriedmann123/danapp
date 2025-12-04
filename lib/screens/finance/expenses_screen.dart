@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import '../../config/finance_theme.dart';
@@ -59,52 +59,48 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       }
     } catch (e) {
       // Fallback if file picker is not available
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'File picker not available. You can still add expenses without attachments.',
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'File picker not available. You can still add expenses without attachments.',
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
   }
 
   Future<void> _addExpense() async {
     if (_descriptionController.text.isEmpty || _amountController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all required fields')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill all required fields')),
+        );
+      }
       return;
     }
+
+    // Close dialog immediately
+    Navigator.pop(context);
 
     setState(() {
       _isUploading = true;
     });
 
     try {
-      String userId = 'user123'; // Replace with actual user ID
-
-      Map<String, dynamic> expenseData = {
-        'user_id': userId,
-        'description': _descriptionController.text,
-        'amount': double.parse(_amountController.text),
-        'merchant': _merchantController.text,
-        'category': _selectedCategory,
-        'date': _selectedDate,
-        'notes': _notesController.text,
-        'has_attachments': _selectedFiles.isNotEmpty,
-        'created_at': DateTime.now(),
-      };
-
-      String expenseId;
-      if (_selectedFiles.isNotEmpty) {
-        expenseId = await ExpensesService.addExpenseWithFile(
-          expenseData,
-          _selectedFiles,
-        );
-      } else {
-        expenseId = await ExpensesService.addExpense(expenseData);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please sign in to add expenses')),
+          );
+        }
+        return;
       }
+
+      if (_selectedFiles.isNotEmpty) {
+      } else {}
 
       // Clear form
       _descriptionController.clear();
@@ -115,18 +111,23 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       _selectedDate = DateTime.now();
       _selectedFiles.clear();
 
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Expense added successfully!')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Expense added successfully!')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     } finally {
-      setState(() {
-        _isUploading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+        });
+      }
     }
   }
 
@@ -211,7 +212,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                         ),
                         lastDate: DateTime.now().add(const Duration(days: 30)),
                       );
-                      if (date != null) {
+                      if (date != null && mounted) {
                         setState(() {
                           _selectedDate = date;
                         });
@@ -557,7 +558,13 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    String userId = 'user123'; // Replace with actual user ID
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please sign in to view expenses')),
+      );
+    }
+    String userId = user.uid;
 
     return DefaultTabController(
       length: 2,
@@ -895,7 +902,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                         ),
                         lastDate: DateTime.now().add(const Duration(days: 365)),
                       );
-                      if (date != null) {
+                      if (date != null && mounted) {
                         setState(() {
                           _selectedStartDate = date;
                         });
@@ -943,14 +950,28 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
   Future<void> _addAutomaticExpense() async {
     if (_autoDescriptionController.text.isEmpty ||
         _autoAmountController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all required fields')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill all required fields')),
+        );
+      }
       return;
     }
 
+    // Close dialog immediately
+    Navigator.pop(context);
+
     try {
-      String userId = 'user123'; // Replace with actual user ID
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please sign in to add expenses')),
+          );
+        }
+        return;
+      }
+      String userId = user.uid;
 
       AutomaticExpense expense = AutomaticExpense(
         id: '',
@@ -977,14 +998,19 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
       _selectedEndDate = null;
       _isAutoActive = true;
 
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Automatic expense added successfully!')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Automatic expense added successfully!'),
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
     }
   }
 
@@ -1030,7 +1056,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
               String description = data['description'] ?? '';
               String category = data['category'] ?? 'other';
               String frequency = data['frequency'] ?? 'monthly';
-              DateTime startDate = (data['start_date'] as Timestamp).toDate();
+              (data['start_date'] as Timestamp).toDate();
               bool isActive = data['is_active'] ?? true;
               String? notes = data['notes'];
 
@@ -1122,6 +1148,28 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
                           ),
                         ],
                       ),
+                      SizedBox(height: FinanceTheme.spacingS),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            onPressed: () => _showEditExpenseDialog(doc.id, data),
+                            icon: Icon(
+                              Icons.edit_outlined,
+                              color: FinanceTheme.primaryColor,
+                              size: 20,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => _deleteExpense(doc.id),
+                            icon: Icon(
+                              Icons.delete_outline,
+                              color: FinanceTheme.dangerColor,
+                              size: 20,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -1132,5 +1180,222 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
         return const Center(child: CircularProgressIndicator());
       },
     );
+  }
+
+  void _showEditExpenseDialog(String expenseId, Map<String, dynamic> data) {
+    // Pre-fill the form with existing data
+    _descriptionController.text = data['description'] ?? '';
+    _amountController.text = (data['amount'] ?? 0.0).toString();
+    _merchantController.text = data['merchant'] ?? '';
+    _selectedCategory = data['category'] ?? 'other';
+    _selectedDate = (data['date'] as Timestamp?)?.toDate() ?? DateTime.now();
+    _notesController.text = data['notes'] ?? '';
+    _selectedFiles.clear();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Edit Expense', style: FinanceTheme.headingSmall),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _descriptionController,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Description',
+                  hintText: 'e.g., Grocery shopping, Gas',
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              TextField(
+                controller: _merchantController,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Merchant/Store',
+                  hintText: 'e.g., Walmart, Shell',
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              TextField(
+                controller: _amountController,
+                keyboardType: TextInputType.number,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Amount (₪)',
+                  hintText: '25.50',
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              DropdownButtonFormField<String>(
+                value: _selectedCategory,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Category',
+                ),
+                items: ExpensesService.getExpenseCategories().map((category) {
+                  String icon = ExpensesService.getCategoryIcons()[category] ?? '📄';
+                  String name = ExpensesService.getCategoryNames()[category] ?? category;
+                  return DropdownMenuItem(
+                    value: category,
+                    child: Row(
+                      children: [
+                        Text(icon),
+                        const SizedBox(width: 8),
+                        Text(name),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedCategory = value ?? 'other';
+                  });
+                },
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              ListTile(
+                title: Text(
+                  'Date: ${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}',
+                  style: FinanceTheme.bodyMedium,
+                ),
+                trailing: const Icon(Icons.calendar_today),
+                onTap: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: _selectedDate,
+                    firstDate: DateTime.now().subtract(
+                      const Duration(days: 365),
+                    ),
+                    lastDate: DateTime.now().add(const Duration(days: 30)),
+                  );
+                  if (date != null && mounted) {
+                    setState(() {
+                      _selectedDate = date;
+                    });
+                  }
+                },
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              TextField(
+                controller: _notesController,
+                maxLines: 2,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Notes (optional)',
+                  hintText: 'Add any additional notes',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            style: FinanceTheme.textButtonStyle,
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => _updateExpense(expenseId),
+            style: FinanceTheme.primaryButtonStyle,
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _updateExpense(String expenseId) async {
+    if (_descriptionController.text.isEmpty || _amountController.text.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill all required fields')),
+        );
+      }
+      return;
+    }
+
+    // Close the edit dialog immediately
+    Navigator.pop(context);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please sign in to update expenses')),
+          );
+        }
+        return;
+      }
+
+      Map<String, dynamic> expenseData = {
+        'description': _descriptionController.text,
+        'amount': double.parse(_amountController.text),
+        'merchant': _merchantController.text,
+        'category': _selectedCategory,
+        'date': _selectedDate,
+        'notes': _notesController.text,
+      };
+
+      await ExpensesService.updateExpense(expenseId, expenseData);
+
+      // Clear form
+      _descriptionController.clear();
+      _amountController.clear();
+      _merchantController.clear();
+      _notesController.clear();
+      _selectedCategory = 'other';
+      _selectedDate = DateTime.now();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Expense updated successfully!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteExpense(String expenseId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete Expense', style: FinanceTheme.headingSmall),
+        content: const Text('Are you sure you want to delete this expense entry?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: FinanceTheme.textButtonStyle,
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: FinanceTheme.dangerColor,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await ExpensesService.deleteExpense(expenseId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Expense deleted successfully!')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      }
+    }
   }
 }

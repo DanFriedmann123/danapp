@@ -60,20 +60,29 @@ class _AuthScreenState extends State<AuthScreen> {
           message = 'Authentication failed: ${e.message}';
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Authentication failed: $e'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Authentication failed: $e'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -85,14 +94,16 @@ class _AuthScreenState extends State<AuthScreen> {
     try {
       // Check if running on simulator
       if (Platform.isIOS && !await SignInWithApple.isAvailable()) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Apple Sign In is not available on simulator. Please test on a real device.',
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Apple Sign In is not available on simulator. Please test on a real device.',
+              ),
+              duration: Duration(seconds: 3),
             ),
-            duration: Duration(seconds: 3),
-          ),
-        );
+          );
+        }
         return;
       }
 
@@ -103,6 +114,11 @@ class _AuthScreenState extends State<AuthScreen> {
           AppleIDAuthorizationScopes.fullName,
         ],
       );
+
+      // Check if we got the required tokens
+      if (credential.identityToken == null) {
+        throw Exception('Apple Sign In failed: No identity token received');
+      }
 
       // Create Firebase credential
       final oauthCredential = OAuthProvider('apple.com').credential(
@@ -126,24 +142,65 @@ class _AuthScreenState extends State<AuthScreen> {
             'Apple Sign In is not available on simulator. Please test on a real device.';
       } else if (e.code == AuthorizationErrorCode.canceled) {
         message = 'Sign in was canceled';
+      } else if (e.code == AuthorizationErrorCode.invalidResponse) {
+        message = 'Invalid response from Apple. Please try again.';
+      } else if (e.code == AuthorizationErrorCode.notHandled) {
+        message = 'Apple Sign In not handled. Please try again.';
+      } else if (e.code == AuthorizationErrorCode.failed) {
+        message = 'Apple Sign In failed. Please try again.';
       } else {
         message = 'Sign in failed: ${e.code}';
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      String message = 'Firebase authentication failed';
+
+      switch (e.code) {
+        case 'invalid-credential':
+          message = 'Invalid Apple Sign In credentials. Please try again.';
+          break;
+        case 'account-exists-with-different-credential':
+          message =
+              'An account already exists with the same email address but different sign-in credentials.';
+          break;
+        case 'operation-not-allowed':
+          message = 'Apple Sign In is not enabled. Please contact support.';
+          break;
+        default:
+          message = 'Authentication failed: ${e.message}';
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Sign in failed: $e'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sign in failed: $e'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -166,7 +223,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 20,
                         offset: const Offset(0, 10),
                       ),
@@ -324,7 +381,7 @@ class _AuthScreenState extends State<AuthScreen> {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.2),
+            color: Colors.black.withValues(alpha: 0.2),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),

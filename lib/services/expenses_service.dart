@@ -75,7 +75,6 @@ class ExpensesService {
 
       return urls;
     } catch (e) {
-      print('Error getting expense files: $e');
       return [];
     }
   }
@@ -157,14 +156,24 @@ class ExpensesService {
   /// Update expense
   static Future<void> updateExpense(
     String expenseId,
-    Map<String, dynamic> data,
+    Map<String, dynamic> expenseData,
   ) async {
-    await FirebaseService.updateDocument('expenses', expenseId, data);
+    await FirebaseService.updateDocument('expenses', expenseId, expenseData);
   }
 
   /// Delete expense
   static Future<void> deleteExpense(String expenseId) async {
     await FirebaseService.deleteDocument('expenses', expenseId);
+  }
+
+  /// Update expense with confirmation
+  static Future<bool> deleteExpenseWithConfirmation(String expenseId) async {
+    try {
+      await FirebaseService.deleteDocument('expenses', expenseId);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   /// Get expense categories

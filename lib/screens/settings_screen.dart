@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../config/app_config.dart';
+import '../services/firebase_service.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'currency_settings_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -29,7 +33,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _signOut(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
     // Navigate back to the main screen, which will be handled by AuthWrapper
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    if (mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
   }
 
   Future<void> _editProfile(BuildContext context) async {
@@ -38,53 +44,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     _nameController.text = user.displayName ?? '';
 
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(
-              'Edit Profile',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: _nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Display Name',
-                    border: OutlineInputBorder(),
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: Text(
+                'Edit Profile',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: _nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Display Name',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    try {
+                      await user.updateDisplayName(_nameController.text.trim());
+                      if (mounted) {
+                        Navigator.of(context).pop();
+                        setState(() {});
+                      }
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Profile updated successfully!'),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Failed to update profile: $e'),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Save'),
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  try {
-                    await user.updateDisplayName(_nameController.text.trim());
-                    Navigator.of(context).pop();
-                    setState(() {});
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Profile updated successfully!'),
-                      ),
-                    );
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Failed to update profile: $e')),
-                    );
-                  }
-                },
-                child: const Text('Save'),
-              ),
-            ],
-          ),
-    );
+      );
+    }
   }
 
   Future<void> _changeEmail(BuildContext context) async {
@@ -93,54 +109,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     _emailController.text = user.email ?? '';
 
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(
-              'Change Email',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'New Email',
-                    border: OutlineInputBorder(),
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: Text(
+                'Change Email',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'New Email',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    try {
+                      await user.updateEmail(_emailController.text.trim());
+                      if (mounted) {
+                        Navigator.of(context).pop();
+                        setState(() {});
+                      }
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Email updated successfully!'),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Failed to update email: $e')),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Save'),
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  try {
-                    await user.updateEmail(_emailController.text.trim());
-                    Navigator.of(context).pop();
-                    setState(() {});
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Email updated successfully!'),
-                      ),
-                    );
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Failed to update email: $e')),
-                    );
-                  }
-                },
-                child: const Text('Save'),
-              ),
-            ],
-          ),
-    );
+      );
+    }
   }
 
   Future<void> _changePassword(BuildContext context) async {
@@ -148,101 +172,113 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _newPasswordController.clear();
     _confirmPasswordController.clear();
 
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(
-              'Change Password',
-              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: _currentPasswordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Current Password',
-                    border: OutlineInputBorder(),
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: Text(
+                'Change Password',
+                style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: _currentPasswordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Current Password',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _newPasswordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'New Password',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _confirmPasswordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Confirm New Password',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _newPasswordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'New Password',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _confirmPasswordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirm New Password',
-                    border: OutlineInputBorder(),
-                  ),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (_newPasswordController.text !=
+                        _confirmPasswordController.text) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('New passwords do not match'),
+                        ),
+                      );
+                      return;
+                    }
+
+                    if (_newPasswordController.text.length < 6) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Password must be at least 6 characters',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+
+                    try {
+                      final user = FirebaseAuth.instance.currentUser;
+                      if (user != null && user.email != null) {
+                        // Re-authenticate user before changing password
+                        final credential = EmailAuthProvider.credential(
+                          email: user.email!,
+                          password: _currentPasswordController.text,
+                        );
+                        await user.reauthenticateWithCredential(credential);
+
+                        // Update password
+                        await user.updatePassword(_newPasswordController.text);
+                        if (mounted) {
+                          Navigator.of(context).pop();
+                        }
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Password updated successfully!'),
+                            ),
+                          );
+                        }
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Failed to update password: $e'),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Save'),
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  if (_newPasswordController.text !=
-                      _confirmPasswordController.text) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('New passwords do not match'),
-                      ),
-                    );
-                    return;
-                  }
-
-                  if (_newPasswordController.text.length < 6) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Password must be at least 6 characters'),
-                      ),
-                    );
-                    return;
-                  }
-
-                  try {
-                    final user = FirebaseAuth.instance.currentUser;
-                    if (user != null && user.email != null) {
-                      // Re-authenticate user before changing password
-                      final credential = EmailAuthProvider.credential(
-                        email: user.email!,
-                        password: _currentPasswordController.text,
-                      );
-                      await user.reauthenticateWithCredential(credential);
-
-                      // Update password
-                      await user.updatePassword(_newPasswordController.text);
-                      Navigator.of(context).pop();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Password updated successfully!'),
-                        ),
-                      );
-                    }
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Failed to update password: $e')),
-                    );
-                  }
-                },
-                child: const Text('Save'),
-              ),
-            ],
-          ),
-    );
+      );
+    }
   }
 
   @override
@@ -286,7 +322,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -300,6 +336,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _buildUserInfo('Name', user.displayName ?? 'No name'),
                         const SizedBox(height: 16),
                         _buildUserInfo('User ID', user.uid),
+                        const SizedBox(height: 16),
+                        _buildFirebaseDebugSection(),
                       ],
                       const SizedBox(height: 24),
                       const Divider(),
@@ -345,7 +383,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.grey.withOpacity(0.3),
+                              color: Colors.grey.withValues(alpha: 0.3),
                               blurRadius: 12,
                               offset: const Offset(0, 6),
                             ),
@@ -403,7 +441,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
+                        color: Colors.black.withValues(alpha: 0.05),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -461,6 +499,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           // TODO: Implement about page
                         },
                       ),
+                      const SizedBox(height: 16),
+                      _buildSettingsItem(
+                        icon: Icons.currency_exchange,
+                        title: 'Currency Settings',
+                        subtitle:
+                            'Set your main currency and view exchange rates',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (context) => const CurrencySettingsScreen(),
+                            ),
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -494,6 +548,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildFirebaseDebugSection() {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: FirebaseService.testConnection(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Firebase Connection', style: TextStyle(fontSize: 14)),
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ],
+          );
+        }
+
+        if (snapshot.hasData) {
+          final data = snapshot.data!;
+          final isSuccess = data['success'] as bool? ?? false;
+          final message = data['message'] as String? ?? 'Unknown';
+          final error = data['error'] as String?;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Firebase Connection',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  Icon(
+                    isSuccess ? Icons.check_circle : Icons.error,
+                    color: isSuccess ? Colors.green : Colors.red,
+                    size: 16,
+                  ),
+                ],
+              ),
+              if (!isSuccess && error != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  error,
+                  style: GoogleFonts.inter(fontSize: 12, color: Colors.red),
+                ),
+              ],
+            ],
+          );
+        }
+
+        return const Text('Firebase Connection: Unknown');
+      },
     );
   }
 

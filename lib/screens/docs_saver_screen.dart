@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../config/brain_theme.dart';
 
 class DocsSaverScreen extends StatefulWidget {
@@ -160,7 +159,7 @@ class _DocsSaverScreenState extends State<DocsSaverScreen> {
                           child: ListTile(
                             leading: CircleAvatar(
                               backgroundColor: BrainTheme.primaryColor
-                                  .withOpacity(0.1),
+                                  .withValues(alpha: 0.1),
                               child: Icon(
                                 Icons.description,
                                 color: BrainTheme.primaryColor,
@@ -258,7 +257,7 @@ class _DocsSaverScreenState extends State<DocsSaverScreen> {
                           child: ListTile(
                             leading: CircleAvatar(
                               backgroundColor: BrainTheme.secondaryColor
-                                  .withOpacity(0.1),
+                                  .withValues(alpha: 0.1),
                               child: Icon(
                                 Icons.folder,
                                 color: BrainTheme.secondaryColor,

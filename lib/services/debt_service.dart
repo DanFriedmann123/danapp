@@ -145,7 +145,6 @@ class DebtService {
   /// Manual trigger for debt processing (for testing)
   static Future<void> processDebtPayments(String userId) async {
     // This could be used for automatic debt reminders or processing
-    print('Processing debt payments for user: $userId');
   }
 
   /// Check if debt is overdue
@@ -188,7 +187,6 @@ class DebtService {
       await FirebaseService.deleteDocument('debts', debtId);
       return true;
     } catch (e) {
-      print('Error deleting debt: $e');
       return false;
     }
   }
@@ -264,8 +262,6 @@ class DebtService {
             'type': 'automatic_payment',
             'created_at': FieldValue.serverTimestamp(),
           });
-
-          print('Processed automatic payment: ${doc.id} - ${paymentAmount}');
         }
       }
     }

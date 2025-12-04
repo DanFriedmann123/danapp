@@ -68,7 +68,7 @@ class InvestmentService {
         }
       }
     } catch (e) {
-      print('Error processing automatic payments: $e');
+      null;
     }
   }
 
@@ -147,5 +147,28 @@ class InvestmentService {
     );
 
     return now.isAfter(nextPayment);
+  }
+
+  /// Update investment
+  static Future<void> updateInvestment(
+    String investmentId,
+    Map<String, dynamic> investmentData,
+  ) async {
+    await FirebaseService.updateDocument('investments', investmentId, investmentData);
+  }
+
+  /// Delete investment
+  static Future<void> deleteInvestment(String investmentId) async {
+    await FirebaseService.deleteDocument('investments', investmentId);
+  }
+
+  /// Delete investment with confirmation
+  static Future<bool> deleteInvestmentWithConfirmation(String investmentId) async {
+    try {
+      await FirebaseService.deleteDocument('investments', investmentId);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 }

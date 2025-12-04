@@ -77,7 +77,6 @@ class CashService {
       await FirebaseService.deleteDocument('cash_entries', entryId);
       return true;
     } catch (e) {
-      print('Error deleting cash entry: $e');
       return false;
     }
   }

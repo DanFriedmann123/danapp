@@ -1,11 +1,53 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 import 'dart:typed_data';
 
 class FirebaseService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static final FirebaseStorage _storage = FirebaseStorage.instance;
+
+  /// Get current authenticated user ID
+  static String? getCurrentUserId() {
+    final user = FirebaseAuth.instance.currentUser;
+    return user?.uid;
+  }
+
+  /// Get current authenticated user ID or throw exception
+  static String getCurrentUserIdOrThrow() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      throw Exception('User not authenticated');
+    }
+    return user.uid;
+  }
+
+  /// Test Firebase connection and authentication
+  static Future<Map<String, dynamic>> testConnection() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        return {
+          'success': false,
+          'error': 'User not authenticated',
+          'user_id': null,
+        };
+      }
+
+      // Test Firestore connection
+      await _firestore.collection('test').doc('connection_test').get();
+
+      return {
+        'success': true,
+        'user_id': user.uid,
+        'user_email': user.email,
+        'message': 'Firebase connection successful',
+      };
+    } catch (e) {
+      return {'success': false, 'error': e.toString(), 'user_id': null};
+    }
+  }
 
   // Database Operations (Firestore)
 

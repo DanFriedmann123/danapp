@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'firebase_service.dart';
 import 'investment_service.dart';
 import 'savings_service.dart';
 import 'debt_service.dart';
@@ -58,7 +56,6 @@ class ReportsService {
             totalIncome > 0 ? (totalExpenses / totalIncome) * 100 : 0.0,
       };
     } catch (e) {
-      print('Error getting financial summary: $e');
       return {};
     }
   }
@@ -143,7 +140,6 @@ class ReportsService {
         'income_sources': incomeSources,
       };
     } catch (e) {
-      print('Error getting category breakdowns: $e');
       return {};
     }
   }
@@ -185,7 +181,6 @@ class ReportsService {
         'net_debt': netDebt,
       };
     } catch (e) {
-      print('Error getting financial health: $e');
       return {};
     }
   }
@@ -229,7 +224,6 @@ class ReportsService {
         'category_breakdown': categoryTotals,
       };
     } catch (e) {
-      print('Error getting spending insights: $e');
       return {};
     }
   }
@@ -254,7 +248,6 @@ class ReportsService {
             totalTarget > 0 ? (totalSaved / totalTarget) * 100 : 0.0,
       };
     } catch (e) {
-      print('Error getting savings progress: $e');
       return {};
     }
   }
@@ -284,7 +277,6 @@ class ReportsService {
             totalInvested > 0 ? (totalGainLoss / totalInvested) * 100 : 0.0,
       };
     } catch (e) {
-      print('Error getting investment performance: $e');
       return {};
     }
   }
@@ -315,7 +307,6 @@ class ReportsService {
                 : 0.0,
       };
     } catch (e) {
-      print('Error getting debt analysis: $e');
       return {};
     }
   }
@@ -356,7 +347,6 @@ class ReportsService {
         'average_income': totalEntries > 0 ? totalIncome / totalEntries : 0.0,
       };
     } catch (e) {
-      print('Error getting income analysis: $e');
       return {};
     }
   }

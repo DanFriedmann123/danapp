@@ -86,7 +86,6 @@ class SafeService {
       await FirebaseService.deleteDocument('safe_items', itemId);
       return true;
     } catch (e) {
-      print('Error deleting safe item: $e');
       return false;
     }
   }

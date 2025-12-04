@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../config/finance_theme.dart';
 import '../../services/debt_service.dart';
 
@@ -43,107 +44,86 @@ class _DebtScreenState extends State<DebtScreen>
   }
 
   Future<void> _addDebt() async {
-    if (_descriptionController.text.isEmpty ||
-        _amountController.text.isEmpty ||
-        _personController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all required fields')),
-      );
-      return;
-    }
-
-    // Validate monthly payment if automatic payment is enabled
-    if (_hasAutomaticPayment && _monthlyPaymentController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter monthly payment amount')),
-      );
-      return;
-    }
-
-    if (_hasAutomaticPayment) {
-      double? monthlyPayment = double.tryParse(_monthlyPaymentController.text);
-      if (monthlyPayment == null || monthlyPayment <= 0) {
+    if (_descriptionController.text.trim().isEmpty) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please enter a valid monthly payment amount'),
-          ),
+          const SnackBar(content: Text('Please enter a description')),
         );
-        return;
       }
+      return;
+    }
+    if (_personController.text.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a person/entity')),
+        );
+      }
+      return;
+    }
+    double? amount = double.tryParse(_amountController.text);
+    if (amount == null || amount <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid amount')),
+        );
+      }
+      return;
     }
 
     // Show verification dialog
     bool? confirm = await showDialog<bool>(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('Confirm Debt Entry', style: FinanceTheme.headingSmall),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Please verify the debt details:',
-                  style: FinanceTheme.bodyMedium,
-                ),
-                SizedBox(height: FinanceTheme.spacingM),
-                _buildVerificationRow(
-                  'Type',
-                  _selectedType == 'owed' ? 'I Owe' : 'Owed to Me',
-                ),
-                _buildVerificationRow(
-                  'Description',
-                  _descriptionController.text,
-                ),
-                _buildVerificationRow('Person/Entity', _personController.text),
-                _buildVerificationRow(
-                  'Amount',
-                  _amountController.text.isNotEmpty
-                      ? FinanceTheme.formatCurrency(
-                        double.tryParse(_amountController.text) ?? 0.0,
-                      )
-                      : '₪0.00',
-                ),
-                if (_hasAutomaticPayment)
-                  _buildVerificationRow(
-                    'Monthly Payment',
-                    _monthlyPaymentController.text.isNotEmpty
-                        ? FinanceTheme.formatCurrency(
-                          double.tryParse(_monthlyPaymentController.text) ??
-                              0.0,
-                        )
-                        : '₪0.00',
-                  ),
-                if (_selectedDueDate != null)
-                  _buildVerificationRow(
-                    'Due Date',
-                    '${_selectedDueDate!.year}-${_selectedDueDate!.month.toString().padLeft(2, '0')}-${_selectedDueDate!.day.toString().padLeft(2, '0')}',
-                  ),
-                if (_notesController.text.isNotEmpty)
-                  _buildVerificationRow('Notes', _notesController.text),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                style: FinanceTheme.textButtonStyle,
-                child: const Text('Edit'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: FinanceTheme.primaryButtonStyle,
-                child: const Text('Confirm & Save'),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: Text('Confirm Debt Details', style: FinanceTheme.headingSmall),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildVerificationRow('Type', _selectedType == 'owed' ? 'You Owe' : 'Owed to You'),
+            _buildVerificationRow('Description', _descriptionController.text.trim()),
+            _buildVerificationRow('Person/Entity', _personController.text.trim()),
+            _buildVerificationRow('Amount', '\$${amount.toStringAsFixed(2)}'),
+            if (_selectedDueDate != null)
+              _buildVerificationRow('Due Date', '${_selectedDueDate!.year}-${_selectedDueDate!.month.toString().padLeft(2, '0')}-${_selectedDueDate!.day.toString().padLeft(2, '0')}'),
+            if (_hasAutomaticPayment && _monthlyPaymentController.text.isNotEmpty)
+              _buildVerificationRow('Monthly Payment', '\$${double.tryParse(_monthlyPaymentController.text)?.toStringAsFixed(2) ?? '0.00'}'),
+            if (_notesController.text.trim().isNotEmpty)
+              _buildVerificationRow('Notes', _notesController.text.trim()),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: FinanceTheme.textButtonStyle,
+            child: const Text('Edit'),
           ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FinanceTheme.primaryButtonStyle,
+            child: const Text('Confirm & Save'),
+          ),
+        ],
+      ),
     );
 
     if (confirm != true) {
       return; // User chose to edit, keep dialog open
     }
 
+    // Close the add debt dialog
+    Navigator.pop(context);
+
     try {
-      String userId = 'user123'; // Replace with actual user ID
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please sign in to add debts')),
+          );
+        }
+        return;
+      }
+      String userId = user.uid;
 
       await DebtService.addDebt({
         'user_id': userId,
@@ -172,17 +152,18 @@ class _DebtScreenState extends State<DebtScreen>
       _hasDueDate = false;
       _hasAutomaticPayment = false;
 
-      // Close the add debt dialog
-      Navigator.pop(context);
-
-      // Show success message
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Debt added successfully!')));
+      if (mounted) {
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Debt added successfully!')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
@@ -220,318 +201,344 @@ class _DebtScreenState extends State<DebtScreen>
             : null;
     _notesController.text = debtData['notes'] ?? '';
 
-    bool? result = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('Edit Debt', style: FinanceTheme.headingSmall),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Debt Type
-                  Text('Debt Type', style: FinanceTheme.bodyMedium),
-                  SizedBox(height: FinanceTheme.spacingS),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: Text('I Owe', style: FinanceTheme.bodyMedium),
-                          value: 'owed',
-                          groupValue: _selectedType,
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedType = value!;
-                            });
-                          },
-                          activeColor: FinanceTheme.primaryColor,
-                        ),
-                      ),
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: Text(
-                            'Owed to Me',
-                            style: FinanceTheme.bodyMedium,
-                          ),
-                          value: 'owed_to_you',
-                          groupValue: _selectedType,
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedType = value!;
-                            });
-                          },
-                          activeColor: FinanceTheme.primaryColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
-
-                  // Description
-                  TextField(
-                    controller: _descriptionController,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Description',
-                      hintText: 'e.g., Car loan, Business debt',
-                    ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
-
-                  // Person/Entity
-                  TextField(
-                    controller: _personController,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Person/Entity',
-                      hintText: 'e.g., Bank of America, John Smith',
-                    ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
-
-                  // Amount
-                  TextField(
-                    controller: _amountController,
-                    keyboardType: TextInputType.number,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Amount (₪)',
-                      hintText: '1000.00',
-                    ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
-
-                  // Due Date
-                  InkWell(
-                    onTap: () async {
-                      DateTime? pickedDate = await showDatePicker(
-                        context: context,
-                        initialDate: _selectedDueDate ?? DateTime.now(),
-                        firstDate: DateTime.now(),
-                        lastDate: DateTime.now().add(
-                          const Duration(days: 365 * 10),
-                        ),
-                      );
-                      if (pickedDate != null) {
-                        setState(() {
-                          _selectedDueDate = pickedDate;
-                        });
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: FinanceTheme.borderColor),
-                        borderRadius: BorderRadius.circular(8),
-                        color: FinanceTheme.backgroundColor,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_today,
-                            color: FinanceTheme.textSecondary,
-                            size: 20,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            _selectedDueDate != null
-                                ? '${_selectedDueDate!.year}-${_selectedDueDate!.month.toString().padLeft(2, '0')}-${_selectedDueDate!.day.toString().padLeft(2, '0')}'
-                                : 'Select Due Date (Optional)',
-                            style: FinanceTheme.bodyMedium.copyWith(
-                              color:
-                                  _selectedDueDate != null
-                                      ? FinanceTheme.textPrimary
-                                      : FinanceTheme.textSecondary,
+    if (mounted) {
+      await showDialog<bool>(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: Text('Edit Debt', style: FinanceTheme.headingSmall),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Debt Type
+                    Text('Debt Type', style: FinanceTheme.bodyMedium),
+                    SizedBox(height: FinanceTheme.spacingS),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: RadioListTile<String>(
+                            title: Text(
+                              'I Owe',
+                              style: FinanceTheme.bodyMedium,
                             ),
+                            value: 'owed',
+                            groupValue: _selectedType,
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedType = value!;
+                              });
+                            },
+                            activeColor: FinanceTheme.primaryColor,
                           ),
-                        ],
+                        ),
+                        Expanded(
+                          child: RadioListTile<String>(
+                            title: Text(
+                              'Owed to Me',
+                              style: FinanceTheme.bodyMedium,
+                            ),
+                            value: 'owed_to_you',
+                            groupValue: _selectedType,
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedType = value!;
+                              });
+                            },
+                            activeColor: FinanceTheme.primaryColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: FinanceTheme.spacingM),
+
+                    // Description
+                    TextField(
+                      controller: _descriptionController,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Description',
+                        hintText: 'e.g., Car loan, Business debt',
                       ),
                     ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
+                    SizedBox(height: FinanceTheme.spacingM),
 
-                  // Notes
-                  TextField(
-                    controller: _notesController,
-                    maxLines: 3,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Notes (Optional)',
-                      hintText: 'Additional details...',
+                    // Person/Entity
+                    TextField(
+                      controller: _personController,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Person/Entity',
+                        hintText: 'e.g., Bank of America, John Smith',
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                style: FinanceTheme.textButtonStyle,
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  // Validate form
-                  if (_descriptionController.text.trim().isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Please enter a description')),
-                    );
-                    return;
-                  }
-                  if (_personController.text.trim().isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Please enter a person/entity')),
-                    );
-                    return;
-                  }
-                  double? amount = double.tryParse(_amountController.text);
-                  if (amount == null || amount <= 0) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Please enter a valid amount')),
-                    );
-                    return;
-                  }
+                    SizedBox(height: FinanceTheme.spacingM),
 
-                  // Show verification dialog
-                  bool? confirm = await showDialog<bool>(
-                    context: context,
-                    builder:
-                        (context) => AlertDialog(
-                          title: Text(
-                            'Confirm Debt Update',
-                            style: FinanceTheme.headingSmall,
+                    // Amount
+                    TextField(
+                      controller: _amountController,
+                      keyboardType: TextInputType.number,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Amount (₪)',
+                        hintText: '1000.00',
+                      ),
+                    ),
+                    SizedBox(height: FinanceTheme.spacingM),
+
+                    // Due Date
+                    InkWell(
+                      onTap: () async {
+                        DateTime? pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate: _selectedDueDate ?? DateTime.now(),
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime.now().add(
+                            const Duration(days: 365 * 10),
                           ),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Please verify the debt details:',
-                                style: FinanceTheme.bodyMedium,
-                              ),
-                              SizedBox(height: FinanceTheme.spacingM),
-                              _buildVerificationRow(
-                                'Type',
-                                _selectedType == 'owed'
-                                    ? 'I Owe'
-                                    : 'Owed to Me',
-                              ),
-                              _buildVerificationRow(
-                                'Description',
-                                _descriptionController.text,
-                              ),
-                              _buildVerificationRow(
-                                'Person/Entity',
-                                _personController.text,
-                              ),
-                              _buildVerificationRow(
-                                'Amount',
-                                FinanceTheme.formatCurrency(amount),
-                              ),
-                              if (_selectedDueDate != null)
-                                _buildVerificationRow(
-                                  'Due Date',
-                                  '${_selectedDueDate!.year}-${_selectedDueDate!.month.toString().padLeft(2, '0')}-${_selectedDueDate!.day.toString().padLeft(2, '0')}',
-                                ),
-                              if (_notesController.text.isNotEmpty)
-                                _buildVerificationRow(
-                                  'Notes',
-                                  _notesController.text,
-                                ),
-                            ],
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context, false),
-                              style: FinanceTheme.textButtonStyle,
-                              child: const Text('Edit'),
+                        );
+                        if (pickedDate != null && mounted) {
+                          setState(() {
+                            _selectedDueDate = pickedDate;
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: FinanceTheme.borderColor),
+                          borderRadius: BorderRadius.circular(8),
+                          color: FinanceTheme.backgroundColor,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today,
+                              color: FinanceTheme.textSecondary,
+                              size: 20,
                             ),
-                            ElevatedButton(
-                              onPressed: () => Navigator.pop(context, true),
-                              style: FinanceTheme.primaryButtonStyle,
-                              child: const Text('Confirm & Update'),
+                            SizedBox(width: 8),
+                            Text(
+                              _selectedDueDate != null
+                                  ? '${_selectedDueDate!.year}-${_selectedDueDate!.month.toString().padLeft(2, '0')}-${_selectedDueDate!.day.toString().padLeft(2, '0')}'
+                                  : 'Select Due Date (Optional)',
+                              style: FinanceTheme.bodyMedium.copyWith(
+                                color:
+                                    _selectedDueDate != null
+                                        ? FinanceTheme.textPrimary
+                                        : FinanceTheme.textSecondary,
+                              ),
                             ),
                           ],
                         ),
-                  );
+                      ),
+                    ),
+                    SizedBox(height: FinanceTheme.spacingM),
 
-                  if (confirm == true) {
-                    // Update debt
-                    Map<String, dynamic> debtData = {
-                      'type': _selectedType,
-                      'description': _descriptionController.text.trim(),
-                      'person': _personController.text.trim(),
-                      'amount': amount,
-                      'due_date':
-                          _selectedDueDate != null
-                              ? Timestamp.fromDate(_selectedDueDate!)
-                              : null,
-                      'notes': _notesController.text.trim(),
-                      'updated_at': FieldValue.serverTimestamp(),
-                    };
-
-                    await DebtService.updateDebt(debtId, debtData);
-
-                    // Clear form
-                    _descriptionController.clear();
-                    _personController.clear();
-                    _amountController.clear();
-                    _selectedType = 'owed';
-                    _selectedDueDate = null;
-                    _notesController.clear();
-
-                    // Close dialog
-                    Navigator.pop(context, true);
-
-                    // Show success message
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Debt updated successfully!')),
-                    );
-                  }
-                },
-                style: FinanceTheme.primaryButtonStyle,
-                child: const Text('Update'),
+                    // Notes
+                    TextField(
+                      controller: _notesController,
+                      maxLines: 3,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Notes (Optional)',
+                        hintText: 'Additional details...',
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
-    );
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  style: FinanceTheme.textButtonStyle,
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    // Validate form
+                    if (_descriptionController.text.trim().isEmpty) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Please enter a description')),
+                        );
+                      }
+                      return;
+                    }
+                    if (_personController.text.trim().isEmpty) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Please enter a person/entity'),
+                          ),
+                        );
+                      }
+                      return;
+                    }
+                    double? amount = double.tryParse(_amountController.text);
+                    if (amount == null || amount <= 0) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Please enter a valid amount'),
+                          ),
+                        );
+                      }
+                      return;
+                    }
+
+                    // Show verification dialog
+                    bool? confirm;
+                    final currentContext = context;
+                    if (mounted) {
+                      confirm = await showDialog<bool>(
+                        context: currentContext,
+                        builder:
+                            (context) => AlertDialog(
+                              title: Text(
+                                'Confirm Debt Update',
+                                style: FinanceTheme.headingSmall,
+                              ),
+                              content: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Please verify the debt details:',
+                                    style: FinanceTheme.bodyMedium,
+                                  ),
+                                  SizedBox(height: FinanceTheme.spacingM),
+                                  _buildVerificationRow(
+                                    'Type',
+                                    _selectedType == 'owed'
+                                        ? 'I Owe'
+                                        : 'Owed to Me',
+                                  ),
+                                  _buildVerificationRow(
+                                    'Description',
+                                    _descriptionController.text,
+                                  ),
+                                  _buildVerificationRow(
+                                    'Person/Entity',
+                                    _personController.text,
+                                  ),
+                                  _buildVerificationRow(
+                                    'Amount',
+                                    FinanceTheme.formatCurrency(amount),
+                                  ),
+                                  if (_selectedDueDate != null)
+                                    _buildVerificationRow(
+                                      'Due Date',
+                                      '${_selectedDueDate!.year}-${_selectedDueDate!.month.toString().padLeft(2, '0')}-${_selectedDueDate!.day.toString().padLeft(2, '0')}',
+                                    ),
+                                  if (_notesController.text.isNotEmpty)
+                                    _buildVerificationRow(
+                                      'Notes',
+                                      _notesController.text,
+                                    ),
+                                ],
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed:
+                                      () => Navigator.pop(context, false),
+                                  style: FinanceTheme.textButtonStyle,
+                                  child: const Text('Edit'),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  style: FinanceTheme.primaryButtonStyle,
+                                  child: const Text('Confirm & Update'),
+                                ),
+                              ],
+                            ),
+                      );
+                    }
+
+                    if (confirm == true) {
+                      // Update debt
+                      Map<String, dynamic> debtData = {
+                        'type': _selectedType,
+                        'description': _descriptionController.text.trim(),
+                        'person': _personController.text.trim(),
+                        'amount': amount,
+                        'due_date':
+                            _selectedDueDate != null
+                                ? Timestamp.fromDate(_selectedDueDate!)
+                                : null,
+                        'notes': _notesController.text.trim(),
+                        'updated_at': FieldValue.serverTimestamp(),
+                      };
+
+                      await DebtService.updateDebt(debtId, debtData);
+
+                      // Clear form
+                      _descriptionController.clear();
+                      _personController.clear();
+                      _amountController.clear();
+                      _selectedType = 'owed';
+                      _selectedDueDate = null;
+                      _notesController.clear();
+
+                      // Close dialog and show success message
+                      if (mounted) {
+                        Navigator.pop(context, true);
+                      }
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Debt updated successfully!')),
+                        );
+                      }
+                    }
+                  },
+                  style: FinanceTheme.primaryButtonStyle,
+                  child: const Text('Update'),
+                ),
+              ],
+            ),
+      );
+    }
   }
 
   Future<void> _deleteDebt(String debtId, String description) async {
-    bool? confirm = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('Delete Debt', style: FinanceTheme.headingSmall),
-            content: Text(
-              'Are you sure you want to delete "$description"?\n\nThis action cannot be undone.',
-              style: FinanceTheme.bodyMedium,
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                style: FinanceTheme.textButtonStyle,
-                child: const Text('Cancel'),
+    bool? confirm;
+    final currentContext = context;
+    if (mounted) {
+      confirm = await showDialog<bool>(
+        context: currentContext,
+        builder:
+            (context) => AlertDialog(
+              title: Text('Delete Debt', style: FinanceTheme.headingSmall),
+              content: Text(
+                'Are you sure you want to delete "$description"?\n\nThis action cannot be undone.',
+                style: FinanceTheme.bodyMedium,
               ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: FinanceTheme.dangerColor,
-                  foregroundColor: Colors.white,
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  style: FinanceTheme.textButtonStyle,
+                  child: const Text('Cancel'),
                 ),
-                child: const Text('Delete'),
-              ),
-            ],
-          ),
-    );
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: FinanceTheme.dangerColor,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Delete'),
+                ),
+              ],
+            ),
+      );
+    }
 
     if (confirm == true) {
       try {
         bool success = await DebtService.deleteDebtWithConfirmation(debtId);
-        if (success) {
+        if (success && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Debt deleted successfully!')),
           );
-        } else {
+        } else if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Failed to delete debt. Please try again.'),
@@ -539,183 +546,191 @@ class _DebtScreenState extends State<DebtScreen>
           );
         }
       } catch (e) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error deleting debt: $e')));
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error deleting debt: $e')));
+        }
       }
     }
   }
 
   void _showAddDebtDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('Add Debt', style: FinanceTheme.headingSmall),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: Text('I Owe', style: FinanceTheme.bodyMedium),
-                          value: 'owed',
-                          groupValue: _selectedType,
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedType = value ?? 'owed';
-                            });
-                          },
-                          activeColor: FinanceTheme.dangerColor,
-                        ),
-                      ),
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: Text(
-                            'Owed to Me',
-                            style: FinanceTheme.bodyMedium,
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: Text('Add Debt', style: FinanceTheme.headingSmall),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: RadioListTile<String>(
+                            title: Text(
+                              'I Owe',
+                              style: FinanceTheme.bodyMedium,
+                            ),
+                            value: 'owed',
+                            groupValue: _selectedType,
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedType = value ?? 'owed';
+                              });
+                            },
+                            activeColor: FinanceTheme.dangerColor,
                           ),
-                          value: 'owed_to_you',
-                          groupValue: _selectedType,
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedType = value ?? 'owed_to_you';
-                            });
-                          },
-                          activeColor: FinanceTheme.successColor,
                         ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
-                  TextField(
-                    controller: _descriptionController,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Description',
-                      hintText: 'e.g., Car loan, Dinner bill',
+                        Expanded(
+                          child: RadioListTile<String>(
+                            title: Text(
+                              'Owed to Me',
+                              style: FinanceTheme.bodyMedium,
+                            ),
+                            value: 'owed_to_you',
+                            groupValue: _selectedType,
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedType = value ?? 'owed_to_you';
+                              });
+                            },
+                            activeColor: FinanceTheme.successColor,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
-                  TextField(
-                    controller: _personController,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Person/Entity',
-                      hintText: 'e.g., John, Bank of America',
-                    ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
-                  TextField(
-                    controller: _amountController,
-                    keyboardType: TextInputType.number,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Amount (₪)',
-                      hintText: '1000.00',
-                    ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: _hasAutomaticPayment,
-                        onChanged: (value) {
-                          setState(() {
-                            _hasAutomaticPayment = value ?? false;
-                            if (!_hasAutomaticPayment)
-                              _monthlyPaymentController.clear();
-                          });
-                        },
-                        activeColor: FinanceTheme.primaryColor,
-                      ),
-                      Text(
-                        'Set automatic monthly payment',
-                        style: FinanceTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                  if (_hasAutomaticPayment) ...[
                     SizedBox(height: FinanceTheme.spacingM),
                     TextField(
-                      controller: _monthlyPaymentController,
+                      controller: _descriptionController,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Description',
+                        hintText: 'e.g., Car loan, Dinner bill',
+                      ),
+                    ),
+                    SizedBox(height: FinanceTheme.spacingM),
+                    TextField(
+                      controller: _personController,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Person/Entity',
+                        hintText: 'e.g., John, Bank of America',
+                      ),
+                    ),
+                    SizedBox(height: FinanceTheme.spacingM),
+                    TextField(
+                      controller: _amountController,
                       keyboardType: TextInputType.number,
                       decoration: FinanceTheme.inputDecoration.copyWith(
-                        labelText: 'Monthly Payment Amount (₪)',
-                        hintText: '100.00',
+                        labelText: 'Amount (₪)',
+                        hintText: '1000.00',
                       ),
                     ),
-                  ],
-                  SizedBox(height: FinanceTheme.spacingM),
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: _hasDueDate,
-                        onChanged: (value) {
-                          setState(() {
-                            _hasDueDate = value ?? false;
-                            if (!_hasDueDate) _selectedDueDate = null;
-                          });
-                        },
-                        activeColor: FinanceTheme.primaryColor,
-                      ),
-                      Text('Set due date', style: FinanceTheme.bodyMedium),
-                    ],
-                  ),
-                  if (_hasDueDate) ...[
                     SizedBox(height: FinanceTheme.spacingM),
-                    ListTile(
-                      title: Text(
-                        _selectedDueDate != null
-                            ? 'Due Date: ${_selectedDueDate!.year}-${_selectedDueDate!.month.toString().padLeft(2, '0')}-${_selectedDueDate!.day.toString().padLeft(2, '0')}'
-                            : 'Select Due Date',
-                        style: FinanceTheme.bodyMedium,
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: _hasAutomaticPayment,
+                          onChanged: (value) {
+                            setState(() {
+                              _hasAutomaticPayment = value ?? false;
+                              if (!_hasAutomaticPayment) {
+                                _monthlyPaymentController.clear();
+                              }
+                            });
+                          },
+                          activeColor: FinanceTheme.primaryColor,
+                        ),
+                        Text(
+                          'Set automatic monthly payment',
+                          style: FinanceTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                    if (_hasAutomaticPayment) ...[
+                      SizedBox(height: FinanceTheme.spacingM),
+                      TextField(
+                        controller: _monthlyPaymentController,
+                        keyboardType: TextInputType.number,
+                        decoration: FinanceTheme.inputDecoration.copyWith(
+                          labelText: 'Monthly Payment Amount (₪)',
+                          hintText: '100.00',
+                        ),
                       ),
-                      trailing: const Icon(Icons.calendar_today),
-                      onTap: () async {
-                        final date = await showDatePicker(
-                          context: context,
-                          initialDate: DateTime.now().add(
-                            const Duration(days: 30),
-                          ),
-                          firstDate: DateTime.now(),
-                          lastDate: DateTime.now().add(
-                            const Duration(days: 3650),
-                          ),
-                        );
-                        if (date != null) {
-                          setState(() {
-                            _selectedDueDate = date;
-                          });
-                        }
-                      },
+                    ],
+                    SizedBox(height: FinanceTheme.spacingM),
+                    Row(
+                      children: [
+                        Checkbox(
+                          value: _hasDueDate,
+                          onChanged: (value) {
+                            setState(() {
+                              _hasDueDate = value ?? false;
+                              if (!_hasDueDate) _selectedDueDate = null;
+                            });
+                          },
+                          activeColor: FinanceTheme.primaryColor,
+                        ),
+                        Text('Set due date', style: FinanceTheme.bodyMedium),
+                      ],
+                    ),
+                    if (_hasDueDate) ...[
+                      SizedBox(height: FinanceTheme.spacingM),
+                      ListTile(
+                        title: Text(
+                          _selectedDueDate != null
+                              ? 'Due Date: ${_selectedDueDate!.year}-${_selectedDueDate!.month.toString().padLeft(2, '0')}-${_selectedDueDate!.day.toString().padLeft(2, '0')}'
+                              : 'Select Due Date',
+                          style: FinanceTheme.bodyMedium,
+                        ),
+                        trailing: const Icon(Icons.calendar_today),
+                        onTap: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: DateTime.now().add(
+                              const Duration(days: 30),
+                            ),
+                            firstDate: DateTime.now(),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 3650),
+                            ),
+                          );
+                          if (date != null && mounted) {
+                            setState(() {
+                              _selectedDueDate = date;
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                    SizedBox(height: FinanceTheme.spacingM),
+                    TextField(
+                      controller: _notesController,
+                      maxLines: 2,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Notes (optional)',
+                        hintText: 'Add any additional notes',
+                      ),
                     ),
                   ],
-                  SizedBox(height: FinanceTheme.spacingM),
-                  TextField(
-                    controller: _notesController,
-                    maxLines: 2,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Notes (optional)',
-                      hintText: 'Add any additional notes',
-                    ),
-                  ),
-                ],
+                ),
               ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: FinanceTheme.textButtonStyle,
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: _addDebt,
+                  style: FinanceTheme.primaryButtonStyle,
+                  child: const Text('Add Debt'),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                style: FinanceTheme.textButtonStyle,
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: _addDebt,
-                style: FinanceTheme.primaryButtonStyle,
-                child: const Text('Add Debt'),
-              ),
-            ],
-          ),
-    );
+      );
+    }
   }
 
   Widget _buildDebtSummary(String userId) {
@@ -929,7 +944,7 @@ class _DebtScreenState extends State<DebtScreen>
               String description = data['description'] ?? '';
               DateTime? dueDate = data['due_date']?.toDate();
               DateTime? lastPaymentDate = data['last_payment_date']?.toDate();
-              String status = DebtService.getDebtStatus(amount, dueDate);
+              DebtService.getDebtStatus(amount, dueDate);
               bool isOverdue = DebtService.isDebtOverdue(dueDate);
 
               return Container(
@@ -1065,7 +1080,13 @@ class _DebtScreenState extends State<DebtScreen>
 
   @override
   Widget build(BuildContext context) {
-    String userId = 'user123'; // Replace with actual user ID
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please sign in to view debts')),
+      );
+    }
+    String userId = user.uid;
 
     return Scaffold(
       appBar: AppBar(
@@ -1115,15 +1136,30 @@ class _DebtScreenState extends State<DebtScreen>
                 children: [
                   ElevatedButton.icon(
                     onPressed: () async {
-                      String userId = 'user123'; // Replace with actual user ID
+                      final user = FirebaseAuth.instance.currentUser;
+                      if (user == null) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Please sign in to process payments',
+                              ),
+                            ),
+                          );
+                        }
+                        return;
+                      }
+                      String userId = user.uid;
                       await DebtService.processAutomaticMonthlyPayments(userId);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Automatic payments processed successfully!',
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Automatic payments processed successfully!',
+                            ),
                           ),
-                        ),
-                      );
+                        );
+                      }
                     },
                     icon: Icon(Icons.payment, size: 16),
                     label: Text('Process Monthly Payments'),

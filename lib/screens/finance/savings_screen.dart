@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../config/finance_theme.dart';
 import '../../services/savings_service.dart';
 
@@ -58,14 +59,30 @@ class _SavingsScreenState extends State<SavingsScreen> {
         _targetAmountController.text.isEmpty ||
         _currentAmountController.text.isEmpty ||
         _monthlyContributionController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all required fields')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill all required fields')),
+        );
+      }
       return;
     }
 
+    // Close dialog immediately
+    Navigator.pop(context);
+
     try {
-      String userId = 'user123'; // Replace with actual user ID
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please sign in to add savings goals'),
+            ),
+          );
+        }
+        return;
+      }
+      String userId = user.uid;
 
       await SavingsService.addSavingsGoal({
         'user_id': userId,
@@ -92,14 +109,17 @@ class _SavingsScreenState extends State<SavingsScreen> {
       _selectedDeadline = null;
       _hasDeadline = false;
 
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Savings goal added successfully!')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Savings goal added successfully!')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
@@ -203,7 +223,7 @@ class _SavingsScreenState extends State<SavingsScreen> {
                             const Duration(days: 3650),
                           ),
                         );
-                        if (date != null) {
+                        if (date != null && mounted) {
                           setState(() {
                             _selectedDeadline = date;
                           });
@@ -435,6 +455,28 @@ class _SavingsScreenState extends State<SavingsScreen> {
                         ],
                       ),
                       SizedBox(height: FinanceTheme.spacingS),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            onPressed: () => _showEditSavingsGoalDialog(doc.id, data),
+                            icon: Icon(
+                              Icons.edit_outlined,
+                              color: FinanceTheme.primaryColor,
+                              size: 20,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => _deleteSavingsGoal(doc.id),
+                            icon: Icon(
+                              Icons.delete_outline,
+                              color: FinanceTheme.dangerColor,
+                              size: 20,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: FinanceTheme.spacingS),
                       LinearProgressIndicator(
                         value: progress / 100,
                         backgroundColor: FinanceTheme.borderColor,
@@ -494,9 +536,263 @@ class _SavingsScreenState extends State<SavingsScreen> {
     );
   }
 
+  void _showEditSavingsGoalDialog(String goalId, Map<String, dynamic> data) {
+    // Pre-fill the form with existing data
+    _nameController.text = data['name'] ?? '';
+    _targetAmountController.text = (data['target_amount'] ?? 0.0).toString();
+    _currentAmountController.text = (data['current_amount'] ?? 0.0).toString();
+    _monthlyContributionController.text = (data['monthly_contribution'] ?? 0.0).toString();
+    _selectedCategory = data['category'] ?? 'emergency';
+    _selectedDeadline = data['deadline']?.toDate();
+    _hasDeadline = _selectedDeadline != null;
+    _notesController.text = data['notes'] ?? '';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Edit Savings Goal', style: FinanceTheme.headingSmall),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _nameController,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Goal Name',
+                  hintText: 'e.g., Emergency Fund',
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              DropdownButtonFormField<String>(
+                value: _selectedCategory,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Category',
+                ),
+                items: _categories.map((category) {
+                  return DropdownMenuItem(
+                    value: category,
+                    child: Text(_categoryNames[category] ?? category),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedCategory = value ?? 'emergency';
+                  });
+                },
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              TextField(
+                controller: _targetAmountController,
+                keyboardType: TextInputType.number,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Target Amount (₪)',
+                  hintText: '10000.00',
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              TextField(
+                controller: _currentAmountController,
+                keyboardType: TextInputType.number,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Current Amount (₪)',
+                  hintText: '2500.00',
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              TextField(
+                controller: _monthlyContributionController,
+                keyboardType: TextInputType.number,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Monthly Contribution (₪)',
+                  hintText: '500.00',
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              Row(
+                children: [
+                  Checkbox(
+                    value: _hasDeadline,
+                    onChanged: (value) {
+                      setState(() {
+                        _hasDeadline = value ?? false;
+                        if (!_hasDeadline) _selectedDeadline = null;
+                      });
+                    },
+                    activeColor: FinanceTheme.primaryColor,
+                  ),
+                  Text('Set deadline', style: FinanceTheme.bodyMedium),
+                ],
+              ),
+              if (_hasDeadline) ...[
+                SizedBox(height: FinanceTheme.spacingM),
+                ListTile(
+                  title: Text(
+                    _selectedDeadline != null
+                        ? 'Deadline: ${_selectedDeadline!.year}-${_selectedDeadline!.month.toString().padLeft(2, '0')}-${_selectedDeadline!.day.toString().padLeft(2, '0')}'
+                        : 'Select Deadline',
+                    style: FinanceTheme.bodyMedium,
+                  ),
+                  trailing: const Icon(Icons.calendar_today),
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: _selectedDeadline ?? DateTime.now().add(
+                        const Duration(days: 365),
+                      ),
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(
+                        const Duration(days: 3650),
+                      ),
+                    );
+                    if (date != null && mounted) {
+                      setState(() {
+                        _selectedDeadline = date;
+                      });
+                    }
+                  },
+                ),
+              ],
+              SizedBox(height: FinanceTheme.spacingM),
+              TextField(
+                controller: _notesController,
+                maxLines: 2,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Notes (optional)',
+                  hintText: 'Add any notes about this goal',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            style: FinanceTheme.textButtonStyle,
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => _updateSavingsGoal(goalId),
+            style: FinanceTheme.primaryButtonStyle,
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _updateSavingsGoal(String goalId) async {
+    if (_nameController.text.isEmpty ||
+        _targetAmountController.text.isEmpty ||
+        _currentAmountController.text.isEmpty ||
+        _monthlyContributionController.text.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill all required fields')),
+        );
+      }
+      return;
+    }
+
+    // Close the edit dialog immediately
+    Navigator.pop(context);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please sign in to update savings goals')),
+          );
+        }
+        return;
+      }
+
+      Map<String, dynamic> goalData = {
+        'name': _nameController.text,
+        'target_amount': double.parse(_targetAmountController.text),
+        'current_amount': double.parse(_currentAmountController.text),
+        'monthly_contribution': double.parse(_monthlyContributionController.text),
+        'category': _selectedCategory,
+        'deadline': _selectedDeadline,
+        'notes': _notesController.text,
+      };
+
+      await SavingsService.updateSavingsGoal(goalId, goalData);
+
+      // Clear form
+      _nameController.clear();
+      _targetAmountController.clear();
+      _currentAmountController.clear();
+      _monthlyContributionController.clear();
+      _notesController.clear();
+      _selectedCategory = 'emergency';
+      _selectedDeadline = null;
+      _hasDeadline = false;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Savings goal updated successfully!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteSavingsGoal(String goalId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete Savings Goal', style: FinanceTheme.headingSmall),
+        content: const Text('Are you sure you want to delete this savings goal?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: FinanceTheme.textButtonStyle,
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: FinanceTheme.dangerColor,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await SavingsService.deleteSavingsGoal(goalId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Savings goal deleted successfully!')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    String userId = 'user123'; // Replace with actual user ID
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please sign in to view savings')),
+      );
+    }
+    String userId = user.uid;
 
     return Scaffold(
       appBar: AppBar(
@@ -524,11 +820,15 @@ class _SavingsScreenState extends State<SavingsScreen> {
                           await SavingsService.triggerMonthlyContributions(
                             userId,
                           );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Monthly contributions processed!'),
-                            ),
-                          );
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Monthly contributions processed!',
+                                ),
+                              ),
+                            );
+                          }
                         },
                         icon: Icon(
                           Icons.autorenew,

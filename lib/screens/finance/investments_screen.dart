@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../services/firebase_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/investment_service.dart';
 import '../../config/finance_theme.dart';
 
@@ -33,20 +33,31 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
   }
 
   Future<void> _addInvestment() async {
-    if (_nameController.text.isEmpty ||
-        _companyController.text.isEmpty ||
-        _totalInvestedController.text.isEmpty ||
-        _currentValueController.text.isEmpty ||
+    if (_nameController.text.isEmpty || _companyController.text.isEmpty ||
+        _totalInvestedController.text.isEmpty || _currentValueController.text.isEmpty ||
         _monthlyAmountController.text.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill all required fields')),
+        );
+      }
       return;
     }
 
+    // Close dialog immediately
+    Navigator.pop(context);
+
     try {
-      // For now, using a hardcoded user ID - you'll need to get this from auth
-      String userId = 'user123'; // Replace with actual user ID
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please sign in to add investments')),
+          );
+        }
+        return;
+      }
+      String userId = user.uid;
 
       await InvestmentService.addInvestment({
         'user_id': userId,
@@ -65,15 +76,19 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
       _totalInvestedController.clear();
       _currentValueController.clear();
       _monthlyAmountController.clear();
+      _isAutomatic = true;
 
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Investment added successfully!')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Investment added successfully!')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
@@ -389,6 +404,28 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
                             ),
                         ],
                       ),
+                      SizedBox(height: FinanceTheme.spacingS),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            onPressed: () => _showEditInvestmentDialog(doc.id, data),
+                            icon: Icon(
+                              Icons.edit_outlined,
+                              color: FinanceTheme.primaryColor,
+                              size: 20,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => _deleteInvestment(doc.id),
+                            icon: Icon(
+                              Icons.delete_outline,
+                              color: FinanceTheme.dangerColor,
+                              size: 20,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -401,10 +438,210 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
     );
   }
 
+  void _showEditInvestmentDialog(String investmentId, Map<String, dynamic> data) {
+    // Pre-fill the form with existing data
+    _nameController.text = data['name'] ?? '';
+    _companyController.text = data['company'] ?? '';
+    _totalInvestedController.text = (data['total_invested'] ?? 0.0).toString();
+    _currentValueController.text = (data['current_value'] ?? 0.0).toString();
+    _monthlyAmountController.text = (data['monthly_amount'] ?? 0.0).toString();
+    _isAutomatic = data['is_automatic'] ?? true;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Edit Investment', style: FinanceTheme.headingSmall),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _nameController,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Investment Name',
+                  hintText: 'e.g., Vanguard S&P 500 ETF',
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              TextField(
+                controller: _companyController,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Company',
+                  hintText: 'e.g., Vanguard',
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              TextField(
+                controller: _totalInvestedController,
+                keyboardType: TextInputType.number,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Total Invested (₪)',
+                  hintText: '5000.00',
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              TextField(
+                controller: _currentValueController,
+                keyboardType: TextInputType.number,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Current Value (₪)',
+                  hintText: '5500.00',
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              TextField(
+                controller: _monthlyAmountController,
+                keyboardType: TextInputType.number,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Monthly Amount (₪)',
+                  hintText: '500.00',
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+              Row(
+                children: [
+                  Checkbox(
+                    value: _isAutomatic,
+                    onChanged: (value) {
+                      setState(() {
+                        _isAutomatic = value ?? true;
+                      });
+                    },
+                    activeColor: FinanceTheme.primaryColor,
+                  ),
+                  Text('Automatic Investment', style: FinanceTheme.bodyMedium),
+                ],
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            style: FinanceTheme.textButtonStyle,
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => _updateInvestment(investmentId),
+            style: FinanceTheme.primaryButtonStyle,
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _updateInvestment(String investmentId) async {
+    if (_nameController.text.isEmpty ||
+        _companyController.text.isEmpty ||
+        _totalInvestedController.text.isEmpty ||
+        _currentValueController.text.isEmpty ||
+        _monthlyAmountController.text.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fill all required fields')),
+        );
+      }
+      return;
+    }
+
+    // Close the edit dialog immediately
+    Navigator.pop(context);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please sign in to update investments')),
+          );
+        }
+        return;
+      }
+
+      Map<String, dynamic> investmentData = {
+        'name': _nameController.text,
+        'company': _companyController.text,
+        'total_invested': double.parse(_totalInvestedController.text),
+        'current_value': double.parse(_currentValueController.text),
+        'monthly_amount': double.parse(_monthlyAmountController.text),
+        'is_automatic': _isAutomatic,
+      };
+
+      await InvestmentService.updateInvestment(investmentId, investmentData);
+
+      // Clear form
+      _nameController.clear();
+      _companyController.clear();
+      _totalInvestedController.clear();
+      _currentValueController.clear();
+      _monthlyAmountController.clear();
+      _isAutomatic = true;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Investment updated successfully!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteInvestment(String investmentId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete Investment', style: FinanceTheme.headingSmall),
+        content: const Text('Are you sure you want to delete this investment?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: FinanceTheme.textButtonStyle,
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: FinanceTheme.dangerColor,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await InvestmentService.deleteInvestment(investmentId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Investment deleted successfully!')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // For now, using hardcoded user ID - replace with actual user ID from auth
-    String userId = 'user123';
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please sign in to view investments')),
+      );
+    }
+    String userId = user.uid;
 
     return Scaffold(
       appBar: AppBar(
@@ -436,11 +673,13 @@ class _InvestmentsScreenState extends State<InvestmentsScreen> {
                           await InvestmentService.triggerMonthlyPayments(
                             userId,
                           );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Monthly payments processed!'),
-                            ),
-                          );
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Monthly payments processed!'),
+                              ),
+                            );
+                          }
                         },
                         icon: Icon(
                           Icons.autorenew,

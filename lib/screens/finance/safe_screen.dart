@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../config/finance_theme.dart';
 import '../../services/safe_service.dart';
+import '../../services/currency_service.dart';
+import '../../services/preferences_service.dart';
+import '../../widgets/currency_converter.dart';
 
 class SafeScreen extends StatefulWidget {
   const SafeScreen({super.key});
@@ -16,6 +20,8 @@ class _SafeScreenState extends State<SafeScreen> {
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
   String _selectedCategory = 'jewelry';
+  String _selectedCurrency = 'ILS';
+  String _mainCurrency = 'ILS';
   DateTime? _selectedDate;
 
   @override
@@ -27,99 +33,83 @@ class _SafeScreenState extends State<SafeScreen> {
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _loadMainCurrency();
+  }
+
+  Future<void> _loadMainCurrency() async {
+    final mainCurrency = await PreferencesService.getMainCurrency();
+    setState(() {
+      _mainCurrency = mainCurrency;
+      _selectedCurrency = mainCurrency;
+    });
+  }
+
   Future<void> _addSafeItem() async {
     if (_descriptionController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter a description')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a description')),
+        );
+      }
       return;
     }
     if (_valueController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter a value')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Please enter a value')));
+      }
       return;
     }
     if (_locationController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter a location')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a location')),
+        );
+      }
       return;
     }
 
     double? value = double.tryParse(_valueController.text);
     if (value == null || value <= 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter a valid value')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid value')),
+        );
+      }
       return;
     }
 
-    // Show verification dialog
-    bool? confirm = await showDialog<bool>(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('Confirm Safe Item', style: FinanceTheme.headingSmall),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Please verify the item details:',
-                  style: FinanceTheme.bodyMedium,
-                ),
-                SizedBox(height: FinanceTheme.spacingM),
-                _buildVerificationRow(
-                  'Category',
-                  _getCategoryName(_selectedCategory),
-                ),
-                _buildVerificationRow(
-                  'Description',
-                  _descriptionController.text,
-                ),
-                _buildVerificationRow('Location', _locationController.text),
-                _buildVerificationRow(
-                  'Value',
-                  FinanceTheme.formatCurrency(value),
-                ),
-                if (_selectedDate != null)
-                  _buildVerificationRow(
-                    'Date Added',
-                    '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}',
-                  ),
-                if (_notesController.text.isNotEmpty)
-                  _buildVerificationRow('Notes', _notesController.text),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                style: FinanceTheme.textButtonStyle,
-                child: const Text('Edit'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: FinanceTheme.primaryButtonStyle,
-                child: const Text('Confirm & Save'),
-              ),
-            ],
-          ),
-    );
+    // Close dialog immediately
+    Navigator.pop(context);
 
-    if (confirm == true) {
-      Map<String, dynamic> safeData = {
-        'user_id': 'user123', // Replace with actual user ID
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please sign in to add safe items')),
+          );
+        }
+        return;
+      }
+
+      Map<String, dynamic> safeItemData = {
+        'user_id': user.uid,
         'category': _selectedCategory,
         'description': _descriptionController.text.trim(),
         'location': _locationController.text.trim(),
         'value': value,
+        'currency': _selectedCurrency,
         'date_added': _selectedDate ?? DateTime.now(),
         'notes': _notesController.text.trim(),
         'created_at': FieldValue.serverTimestamp(),
       };
 
-      await SafeService.addSafeItem(safeData);
+      await SafeService.addSafeItem(safeItemData);
 
       // Clear form
       _descriptionController.clear();
@@ -129,13 +119,17 @@ class _SafeScreenState extends State<SafeScreen> {
       _selectedDate = null;
       _notesController.clear();
 
-      // Close dialog
-      Navigator.pop(context);
-
-      // Show success message
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Safe item added successfully!')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Safe item added successfully!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
@@ -156,27 +150,6 @@ class _SafeScreenState extends State<SafeScreen> {
       default:
         return 'Other';
     }
-  }
-
-  Widget _buildVerificationRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(
-              '$label:',
-              style: FinanceTheme.bodyMedium.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          Expanded(child: Text(value, style: FinanceTheme.bodyMedium)),
-        ],
-      ),
-    );
   }
 
   void _showAddSafeItemDialog() {
@@ -243,13 +216,28 @@ class _SafeScreenState extends State<SafeScreen> {
                   ),
                   SizedBox(height: FinanceTheme.spacingM),
 
+                  // Currency
+                  CurrencySelector(
+                    selectedCurrency: _selectedCurrency,
+                    onCurrencyChanged: (currency) {
+                      setState(() {
+                        _selectedCurrency = currency;
+                      });
+                    },
+                    label: 'Currency',
+                  ),
+                  SizedBox(height: FinanceTheme.spacingM),
+
                   // Value
                   TextField(
                     controller: _valueController,
                     keyboardType: TextInputType.number,
                     decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Value (₪)',
+                      labelText: 'Value',
                       hintText: '5000.00',
+                      suffixText:
+                          CurrencyService.getCurrencySymbols()[_selectedCurrency] ??
+                          _selectedCurrency,
                     ),
                   ),
                   SizedBox(height: FinanceTheme.spacingM),
@@ -265,7 +253,7 @@ class _SafeScreenState extends State<SafeScreen> {
                         ),
                         lastDate: DateTime.now(),
                       );
-                      if (pickedDate != null) {
+                      if (pickedDate != null && mounted) {
                         setState(() {
                           _selectedDate = pickedDate;
                         });
@@ -464,6 +452,7 @@ class _SafeScreenState extends State<SafeScreen> {
               String location = data['location'] ?? '';
               double value = data['value'] ?? 0.0;
               double amount = data['amount'] ?? 0.0;
+              String currency = data['currency'] ?? 'ILS';
               String category = data['category'] ?? 'other';
               String type = data['type'] ?? '';
               DateTime? dateAdded = data['date_added']?.toDate();
@@ -525,8 +514,14 @@ class _SafeScreenState extends State<SafeScreen> {
                               Text(
                                 isTransaction
                                     ? (isPositive ? '+' : '-') +
-                                        FinanceTheme.formatCurrency(amount)
-                                    : FinanceTheme.formatCurrency(value),
+                                        CurrencyService.formatCurrency(
+                                          amount,
+                                          currency,
+                                        )
+                                    : CurrencyService.formatCurrency(
+                                      value,
+                                      currency,
+                                    ),
                                 style: FinanceTheme.valueSmall.copyWith(
                                   color:
                                       isTransaction
@@ -536,6 +531,25 @@ class _SafeScreenState extends State<SafeScreen> {
                                           : null,
                                 ),
                               ),
+                              if (currency != _mainCurrency)
+                                FutureBuilder<double>(
+                                  future: CurrencyService.convertCurrency(
+                                    isTransaction ? amount : value,
+                                    currency,
+                                    _mainCurrency,
+                                  ),
+                                  builder: (context, snapshot) {
+                                    if (snapshot.hasData) {
+                                      return Text(
+                                        '≈ ${CurrencyService.formatCurrency(snapshot.data!, _mainCurrency)}',
+                                        style: FinanceTheme.bodySmall.copyWith(
+                                          color: FinanceTheme.textSecondary,
+                                        ),
+                                      );
+                                    }
+                                    return const SizedBox.shrink();
+                                  },
+                                ),
                             ],
                           ),
                         ],
@@ -565,6 +579,28 @@ class _SafeScreenState extends State<SafeScreen> {
                           padding: const EdgeInsets.only(top: 8),
                           child: Text(notes, style: FinanceTheme.bodySmall),
                         ),
+                      SizedBox(height: FinanceTheme.spacingS),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            onPressed: () => _showEditSafeItemDialog(doc.id, data),
+                            icon: Icon(
+                              Icons.edit_outlined,
+                              color: FinanceTheme.primaryColor,
+                              size: 20,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => _deleteSafeItem(doc.id),
+                            icon: Icon(
+                              Icons.delete_outline,
+                              color: FinanceTheme.dangerColor,
+                              size: 20,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -645,7 +681,18 @@ class _SafeScreenState extends State<SafeScreen> {
               return;
             }
 
-            String userId = 'user123'; // Replace with actual user ID
+            final user = FirebaseAuth.instance.currentUser;
+            if (user == null) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please sign in to transfer funds'),
+                  ),
+                );
+              }
+              return;
+            }
+            String userId = user.uid;
             await SafeService.transferFromSafeToBank(
               userId,
               amount,
@@ -653,12 +700,14 @@ class _SafeScreenState extends State<SafeScreen> {
               notesController.text.trim(),
             );
 
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Transfer to bank completed successfully!'),
-              ),
-            );
+            if (mounted) {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Transfer to bank completed successfully!'),
+                ),
+              );
+            }
           },
           style: FinanceTheme.primaryButtonStyle,
           child: const Text('Transfer'),
@@ -713,9 +762,303 @@ class _SafeScreenState extends State<SafeScreen> {
     );
   }
 
+  void _showEditSafeItemDialog(String itemId, Map<String, dynamic> data) {
+    // Pre-fill the form with existing data
+    _descriptionController.text = data['description'] ?? '';
+    _valueController.text = (data['value'] ?? 0.0).toString();
+    _locationController.text = data['location'] ?? '';
+    _selectedCategory = data['category'] ?? 'jewelry';
+    _selectedCurrency = data['currency'] ?? 'ILS';
+    _selectedDate = data['date_added']?.toDate();
+    _notesController.text = data['notes'] ?? '';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Edit Safe Item', style: FinanceTheme.headingSmall),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Category
+              DropdownButtonFormField<String>(
+                value: _selectedCategory,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Category',
+                ),
+                items: [
+                  DropdownMenuItem(value: 'jewelry', child: Text('Jewelry')),
+                  DropdownMenuItem(value: 'documents', child: Text('Documents')),
+                  DropdownMenuItem(value: 'cash', child: Text('Cash')),
+                  DropdownMenuItem(value: 'electronics', child: Text('Electronics')),
+                  DropdownMenuItem(value: 'collectibles', child: Text('Collectibles')),
+                  DropdownMenuItem(value: 'other', child: Text('Other')),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    _selectedCategory = value!;
+                  });
+                },
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+
+              // Description
+              TextField(
+                controller: _descriptionController,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Description',
+                  hintText: 'e.g., Diamond ring, Passport',
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+
+              // Location
+              TextField(
+                controller: _locationController,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Location',
+                  hintText: 'e.g., Home safe, Bank vault',
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+
+              // Currency
+              CurrencySelector(
+                selectedCurrency: _selectedCurrency,
+                onCurrencyChanged: (currency) {
+                  setState(() {
+                    _selectedCurrency = currency;
+                  });
+                },
+                label: 'Currency',
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+
+              // Value
+              TextField(
+                controller: _valueController,
+                keyboardType: TextInputType.number,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Value',
+                  hintText: '5000.00',
+                  suffixText: CurrencyService.getCurrencySymbols()[_selectedCurrency] ?? _selectedCurrency,
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+
+              // Date Added
+              InkWell(
+                onTap: () async {
+                  DateTime? pickedDate = await showDatePicker(
+                    context: context,
+                    initialDate: _selectedDate ?? DateTime.now(),
+                    firstDate: DateTime.now().subtract(
+                      const Duration(days: 365 * 10),
+                    ),
+                    lastDate: DateTime.now(),
+                  );
+                  if (pickedDate != null && mounted) {
+                    setState(() {
+                      _selectedDate = pickedDate;
+                    });
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: FinanceTheme.borderColor),
+                    borderRadius: BorderRadius.circular(8),
+                    color: FinanceTheme.backgroundColor,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today,
+                        color: FinanceTheme.textSecondary,
+                        size: 20,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        _selectedDate != null
+                            ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
+                            : 'Select Date Added (Optional)',
+                        style: FinanceTheme.bodyMedium.copyWith(
+                          color: _selectedDate != null
+                              ? FinanceTheme.textPrimary
+                              : FinanceTheme.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(height: FinanceTheme.spacingM),
+
+              // Notes
+              TextField(
+                controller: _notesController,
+                maxLines: 3,
+                decoration: FinanceTheme.inputDecoration.copyWith(
+                  labelText: 'Notes (Optional)',
+                  hintText: 'Additional details...',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            style: FinanceTheme.textButtonStyle,
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => _updateSafeItem(itemId),
+            style: FinanceTheme.primaryButtonStyle,
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _updateSafeItem(String itemId) async {
+    if (_descriptionController.text.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a description')),
+        );
+      }
+      return;
+    }
+    if (_valueController.text.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a value')),
+        );
+      }
+      return;
+    }
+    if (_locationController.text.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a location')),
+        );
+      }
+      return;
+    }
+
+    double? value = double.tryParse(_valueController.text);
+    if (value == null || value <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid value')),
+        );
+      }
+      return;
+    }
+
+    // Close the edit dialog immediately
+    Navigator.pop(context);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please sign in to update safe items')),
+          );
+        }
+        return;
+      }
+
+      Map<String, dynamic> safeItemData = {
+        'category': _selectedCategory,
+        'description': _descriptionController.text.trim(),
+        'location': _locationController.text.trim(),
+        'value': value,
+        'currency': _selectedCurrency,
+        'date_added': _selectedDate ?? DateTime.now(),
+        'notes': _notesController.text.trim(),
+      };
+
+      await SafeService.updateSafeItem(itemId, safeItemData);
+
+      // Clear form
+      _descriptionController.clear();
+      _valueController.clear();
+      _locationController.clear();
+      _selectedCategory = 'jewelry';
+      _selectedDate = null;
+      _notesController.clear();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Safe item updated successfully!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteSafeItem(String itemId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete Safe Item', style: FinanceTheme.headingSmall),
+        content: const Text('Are you sure you want to delete this safe item?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: FinanceTheme.textButtonStyle,
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: FinanceTheme.dangerColor,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await SafeService.deleteSafeItem(itemId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Safe item deleted successfully!')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    String userId = 'user123'; // Replace with actual user ID
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please sign in to view safe')),
+      );
+    }
+    String userId = user.uid;
 
     return Scaffold(
       appBar: AppBar(

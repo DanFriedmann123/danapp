@@ -30,7 +30,7 @@ class MainApp extends StatelessWidget {
           ),
           backgroundColor: Colors.white,
           elevation: 8,
-          shadowColor: Colors.black.withOpacity(0.1),
+          shadowColor: Colors.black.withValues(alpha: 0.1),
         ),
         // Modern button styling
         elevatedButtonTheme: ElevatedButtonThemeData(

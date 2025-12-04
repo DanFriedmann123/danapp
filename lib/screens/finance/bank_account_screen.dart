@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../config/finance_theme.dart';
 import '../../services/bank_account_service.dart';
 
@@ -27,80 +28,76 @@ class _BankAccountScreenState extends State<BankAccountScreen> {
 
   Future<void> _addBankTransaction() async {
     if (_descriptionController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter a description')));
-      return;
-    }
-    if (_amountController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter an amount')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a description')),
+        );
+      }
       return;
     }
 
     double? amount = double.tryParse(_amountController.text);
     if (amount == null || amount <= 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter a valid amount')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid amount')),
+        );
+      }
       return;
     }
 
     // Show verification dialog
     bool? confirm = await showDialog<bool>(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(
-              'Confirm Bank Transaction',
-              style: FinanceTheme.headingSmall,
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Please verify the transaction details:',
-                  style: FinanceTheme.bodyMedium,
-                ),
-                SizedBox(height: FinanceTheme.spacingM),
-                _buildVerificationRow('Type', _getTypeName(_selectedType)),
-                _buildVerificationRow(
-                  'Description',
-                  _descriptionController.text,
-                ),
-                _buildVerificationRow(
-                  'Amount',
-                  FinanceTheme.formatCurrency(amount),
-                ),
-                if (_selectedDate != null)
-                  _buildVerificationRow(
-                    'Date',
-                    '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}',
-                  ),
-                if (_notesController.text.isNotEmpty)
-                  _buildVerificationRow('Notes', _notesController.text),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                style: FinanceTheme.textButtonStyle,
-                child: const Text('Edit'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: FinanceTheme.primaryButtonStyle,
-                child: const Text('Confirm & Save'),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: Text('Confirm Transaction', style: FinanceTheme.headingSmall),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildVerificationRow('Type', _getTypeName(_selectedType)),
+            _buildVerificationRow('Description', _descriptionController.text.trim()),
+            _buildVerificationRow('Amount', '\$${amount.toStringAsFixed(2)}'),
+            _buildVerificationRow('Date', _selectedDate != null 
+                ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
+                : 'Today'),
+            if (_notesController.text.trim().isNotEmpty)
+              _buildVerificationRow('Notes', _notesController.text.trim()),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: FinanceTheme.textButtonStyle,
+            child: const Text('Edit'),
           ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FinanceTheme.primaryButtonStyle,
+            child: const Text('Confirm & Save'),
+          ),
+        ],
+      ),
     );
 
     if (confirm == true) {
+      // Close the add dialog immediately
+      Navigator.pop(context);
+      
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please sign in to add bank transactions'),
+            ),
+          );
+        }
+        return;
+      }
+
       Map<String, dynamic> transactionData = {
-        'user_id': 'user123', // Replace with actual user ID
+        'user_id': user.uid,
         'type': _selectedType,
         'description': _descriptionController.text.trim(),
         'amount': amount,
@@ -118,13 +115,12 @@ class _BankAccountScreenState extends State<BankAccountScreen> {
       _selectedDate = null;
       _notesController.clear();
 
-      // Close dialog
-      Navigator.pop(context);
-
       // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Bank transaction added successfully!')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Bank transaction added successfully!')));
+      }
     }
   }
 
@@ -169,151 +165,399 @@ class _BankAccountScreenState extends State<BankAccountScreen> {
   }
 
   void _showAddBankTransactionDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text(
-              'Add Bank Transaction',
-              style: FinanceTheme.headingSmall,
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Type
-                  DropdownButtonFormField<String>(
-                    value: _selectedType,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Transaction Type',
-                    ),
-                    items: [
-                      DropdownMenuItem(
-                        value: 'deposit',
-                        child: Text('Deposit'),
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: Text(
+                'Add Bank Transaction',
+                style: FinanceTheme.headingSmall,
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Type
+                    DropdownButtonFormField<String>(
+                      value: _selectedType,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Transaction Type',
                       ),
-                      DropdownMenuItem(
-                        value: 'withdrawal',
-                        child: Text('Withdrawal'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'transfer_in',
-                        child: Text('Transfer In'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'transfer_out',
-                        child: Text('Transfer Out'),
-                      ),
-                      DropdownMenuItem(value: 'fee', child: Text('Fee')),
-                      DropdownMenuItem(value: 'other', child: Text('Other')),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedType = value!;
-                      });
-                    },
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
-
-                  // Description
-                  TextField(
-                    controller: _descriptionController,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Description',
-                      hintText: 'e.g., Salary deposit, ATM withdrawal',
-                    ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
-
-                  // Amount
-                  TextField(
-                    controller: _amountController,
-                    keyboardType: TextInputType.number,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Amount (₪)',
-                      hintText: '1000.00',
-                    ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
-
-                  // Date
-                  InkWell(
-                    onTap: () async {
-                      DateTime? pickedDate = await showDatePicker(
-                        context: context,
-                        initialDate: _selectedDate ?? DateTime.now(),
-                        firstDate: DateTime.now().subtract(
-                          const Duration(days: 365 * 10),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'deposit',
+                          child: Text('Deposit'),
                         ),
-                        lastDate: DateTime.now(),
-                      );
-                      if (pickedDate != null) {
+                        DropdownMenuItem(
+                          value: 'withdrawal',
+                          child: Text('Withdrawal'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'transfer_in',
+                          child: Text('Transfer In'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'transfer_out',
+                          child: Text('Transfer Out'),
+                        ),
+                        DropdownMenuItem(value: 'fee', child: Text('Fee')),
+                        DropdownMenuItem(value: 'other', child: Text('Other')),
+                      ],
+                      onChanged: (value) {
                         setState(() {
-                          _selectedDate = pickedDate;
+                          _selectedType = value!;
                         });
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: FinanceTheme.borderColor),
-                        borderRadius: BorderRadius.circular(8),
-                        color: FinanceTheme.backgroundColor,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_today,
-                            color: FinanceTheme.textSecondary,
-                            size: 20,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            _selectedDate != null
-                                ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
-                                : 'Select Date (Optional)',
-                            style: FinanceTheme.bodyMedium.copyWith(
-                              color:
-                                  _selectedDate != null
-                                      ? FinanceTheme.textPrimary
-                                      : FinanceTheme.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
+                      },
                     ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
+                    SizedBox(height: FinanceTheme.spacingM),
 
-                  // Notes
-                  TextField(
-                    controller: _notesController,
-                    maxLines: 3,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Notes (Optional)',
-                      hintText: 'Additional details...',
+                    // Description
+                    TextField(
+                      controller: _descriptionController,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Description',
+                        hintText: 'e.g., Salary deposit, ATM withdrawal',
+                      ),
+                    ),
+                    SizedBox(height: FinanceTheme.spacingM),
+
+                    // Amount
+                    TextField(
+                      controller: _amountController,
+                      keyboardType: TextInputType.number,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Amount (₪)',
+                        hintText: '1000.00',
+                      ),
+                    ),
+                    SizedBox(height: FinanceTheme.spacingM),
+
+                    // Date
+                    InkWell(
+                      onTap: () async {
+                        DateTime? pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate: _selectedDate ?? DateTime.now(),
+                          firstDate: DateTime.now().subtract(
+                            const Duration(days: 365 * 10),
+                          ),
+                          lastDate: DateTime.now(),
+                        );
+                        if (pickedDate != null && mounted) {
+                          setState(() {
+                            _selectedDate = pickedDate;
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: FinanceTheme.borderColor),
+                          borderRadius: BorderRadius.circular(8),
+                          color: FinanceTheme.backgroundColor,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today,
+                              color: FinanceTheme.textSecondary,
+                              size: 20,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              _selectedDate != null
+                                  ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
+                                  : 'Select Date (Optional)',
+                              style: FinanceTheme.bodyMedium.copyWith(
+                                color:
+                                    _selectedDate != null
+                                        ? FinanceTheme.textPrimary
+                                        : FinanceTheme.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: FinanceTheme.spacingM),
+
+                    // Notes
+                    TextField(
+                      controller: _notesController,
+                      maxLines: 3,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Notes (Optional)',
+                        hintText: 'Additional details...',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: FinanceTheme.textButtonStyle,
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: _addBankTransaction,
+                  style: FinanceTheme.primaryButtonStyle,
+                  child: const Text('Add Transaction'),
+                ),
+              ],
+            ),
+      );
+    }
+  }
+
+  void _showEditBankTransactionDialog(String transactionId, Map<String, dynamic> data) {
+    // Pre-fill the form with existing data
+    _descriptionController.text = data['description'] ?? '';
+    _amountController.text = (data['amount'] ?? 0.0).toString();
+    _selectedType = data['type'] ?? 'deposit';
+    _selectedDate = data['date']?.toDate();
+    _notesController.text = data['notes'] ?? '';
+
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Edit Bank Transaction', style: FinanceTheme.headingSmall),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Type
+                DropdownButtonFormField<String>(
+                  value: _selectedType,
+                  decoration: FinanceTheme.inputDecoration.copyWith(
+                    labelText: 'Transaction Type',
+                  ),
+                  items: [
+                    DropdownMenuItem(value: 'deposit', child: Text('Deposit')),
+                    DropdownMenuItem(value: 'withdrawal', child: Text('Withdrawal')),
+                    DropdownMenuItem(value: 'transfer_in', child: Text('Transfer In')),
+                    DropdownMenuItem(value: 'transfer_out', child: Text('Transfer Out')),
+                    DropdownMenuItem(value: 'fee', child: Text('Fee')),
+                    DropdownMenuItem(value: 'other', child: Text('Other')),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedType = value!;
+                    });
+                  },
+                ),
+                SizedBox(height: FinanceTheme.spacingM),
+
+                // Description
+                TextField(
+                  controller: _descriptionController,
+                  decoration: FinanceTheme.inputDecoration.copyWith(
+                    labelText: 'Description',
+                    hintText: 'e.g., Salary deposit, ATM withdrawal',
+                  ),
+                ),
+                SizedBox(height: FinanceTheme.spacingM),
+
+                // Amount
+                TextField(
+                  controller: _amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: FinanceTheme.inputDecoration.copyWith(
+                    labelText: 'Amount (₪)',
+                    hintText: '1000.00',
+                  ),
+                ),
+                SizedBox(height: FinanceTheme.spacingM),
+
+                // Date
+                InkWell(
+                  onTap: () async {
+                    DateTime? pickedDate = await showDatePicker(
+                      context: context,
+                      initialDate: _selectedDate ?? DateTime.now(),
+                      firstDate: DateTime.now().subtract(
+                        const Duration(days: 365 * 10),
+                      ),
+                      lastDate: DateTime.now(),
+                    );
+                    if (pickedDate != null && mounted) {
+                      setState(() {
+                        _selectedDate = pickedDate;
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: FinanceTheme.borderColor),
+                      borderRadius: BorderRadius.circular(8),
+                      color: FinanceTheme.backgroundColor,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_today,
+                          color: FinanceTheme.textSecondary,
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          _selectedDate != null
+                              ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
+                              : 'Select Date (Optional)',
+                          style: FinanceTheme.bodyMedium.copyWith(
+                            color: _selectedDate != null
+                                ? FinanceTheme.textPrimary
+                                : FinanceTheme.textSecondary,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+                SizedBox(height: FinanceTheme.spacingM),
+
+                // Notes
+                TextField(
+                  controller: _notesController,
+                  maxLines: 3,
+                  decoration: FinanceTheme.inputDecoration.copyWith(
+                    labelText: 'Notes (Optional)',
+                    hintText: 'Additional details...',
+                  ),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                style: FinanceTheme.textButtonStyle,
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: _addBankTransaction,
-                style: FinanceTheme.primaryButtonStyle,
-                child: const Text('Add Transaction'),
-              ),
-            ],
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              style: FinanceTheme.textButtonStyle,
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => _updateBankTransaction(transactionId),
+              style: FinanceTheme.primaryButtonStyle,
+              child: const Text('Update'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Future<void> _updateBankTransaction(String transactionId) async {
+    if (_descriptionController.text.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a description')),
+        );
+      }
+      return;
+    }
+
+    double? amount = double.tryParse(_amountController.text);
+    if (amount == null || amount <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid amount')),
+        );
+      }
+      return;
+    }
+
+    // Close the edit dialog immediately
+    Navigator.pop(context);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please sign in to update transactions')),
+          );
+        }
+        return;
+      }
+
+      Map<String, dynamic> transactionData = {
+        'description': _descriptionController.text.trim(),
+        'amount': amount,
+        'type': _selectedType,
+        'date': _selectedDate ?? DateTime.now(),
+        'notes': _notesController.text.trim(),
+      };
+
+      await BankAccountService.updateBankTransaction(transactionId, transactionData);
+
+      // Clear form
+      _descriptionController.clear();
+      _amountController.clear();
+      _notesController.clear();
+      _selectedType = 'deposit';
+      _selectedDate = null;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Transaction updated successfully!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteBankTransaction(String transactionId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete Transaction', style: FinanceTheme.headingSmall),
+        content: const Text('Are you sure you want to delete this transaction?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: FinanceTheme.textButtonStyle,
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: FinanceTheme.dangerColor,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
+
+    if (confirm == true) {
+      try {
+        await BankAccountService.deleteBankTransaction(transactionId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Transaction deleted successfully!')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildBankSummary(String userId) {
@@ -570,6 +814,28 @@ class _BankAccountScreenState extends State<BankAccountScreen> {
                           padding: const EdgeInsets.only(top: 8),
                           child: Text(notes, style: FinanceTheme.bodySmall),
                         ),
+                      SizedBox(height: FinanceTheme.spacingS),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            onPressed: () => _showEditBankTransactionDialog(doc.id, data),
+                            icon: Icon(
+                              Icons.edit_outlined,
+                              color: FinanceTheme.primaryColor,
+                              size: 20,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => _deleteBankTransaction(doc.id),
+                            icon: Icon(
+                              Icons.delete_outline,
+                              color: FinanceTheme.dangerColor,
+                              size: 20,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -584,7 +850,13 @@ class _BankAccountScreenState extends State<BankAccountScreen> {
 
   @override
   Widget build(BuildContext context) {
-    String userId = 'user123'; // Replace with actual user ID
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please sign in to view bank account')),
+      );
+    }
+    String userId = user.uid;
 
     return Scaffold(
       appBar: AppBar(

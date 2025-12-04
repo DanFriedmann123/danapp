@@ -3,7 +3,9 @@ import 'firebase_service.dart';
 
 class BankAccountService {
   /// Add a new bank transaction
-  static Future<String> addBankTransaction(Map<String, dynamic> transactionData) async {
+  static Future<String> addBankTransaction(
+    Map<String, dynamic> transactionData,
+  ) async {
     DocumentReference docRef = await FirebaseService.addDocument(
       'bank_transactions',
       transactionData,
@@ -46,7 +48,9 @@ class BankAccountService {
         if (type == 'deposit' || type == 'transfer_in') {
           totalBalance += amount;
           totalDeposits += amount;
-        } else if (type == 'withdrawal' || type == 'transfer_out' || type == 'fee') {
+        } else if (type == 'withdrawal' ||
+            type == 'transfer_out' ||
+            type == 'fee') {
           totalBalance -= amount;
           totalWithdrawals += amount;
         }
@@ -65,8 +69,15 @@ class BankAccountService {
   }
 
   /// Update bank transaction
-  static Future<void> updateBankTransaction(String transactionId, Map<String, dynamic> transactionData) async {
-    await FirebaseService.updateDocument('bank_transactions', transactionId, transactionData);
+  static Future<void> updateBankTransaction(
+    String transactionId,
+    Map<String, dynamic> transactionData,
+  ) async {
+    await FirebaseService.updateDocument(
+      'bank_transactions',
+      transactionId,
+      transactionData,
+    );
   }
 
   /// Delete bank transaction
@@ -75,18 +86,22 @@ class BankAccountService {
   }
 
   /// Delete bank transaction with confirmation
-  static Future<bool> deleteBankTransactionWithConfirmation(String transactionId) async {
+  static Future<bool> deleteBankTransactionWithConfirmation(
+    String transactionId,
+  ) async {
     try {
       await FirebaseService.deleteDocument('bank_transactions', transactionId);
       return true;
     } catch (e) {
-      print('Error deleting bank transaction: $e');
       return false;
     }
   }
 
   /// Get bank transactions by type
-  static Stream<QuerySnapshot> getBankTransactionsByType(String userId, String type) {
+  static Stream<QuerySnapshot> getBankTransactionsByType(
+    String userId,
+    String type,
+  ) {
     return FirebaseService.queryDocuments(
       'bank_transactions',
       field: 'user_id',
@@ -112,9 +127,7 @@ class BankAccountService {
       var data = doc.data() as Map<String, dynamic>?;
       if (data != null) {
         DateTime? date = data['date']?.toDate();
-        if (date != null &&
-            date.isAfter(startDate) &&
-            date.isBefore(endDate)) {
+        if (date != null && date.isAfter(startDate) && date.isBefore(endDate)) {
           transactions.add(data);
         }
       }
@@ -175,7 +188,9 @@ class BankAccountService {
   }
 
   /// Get total balance by type
-  static Future<Map<String, double>> getTotalBalanceByType(String userId) async {
+  static Future<Map<String, double>> getTotalBalanceByType(
+    String userId,
+  ) async {
     QuerySnapshot snapshot =
         await FirebaseService.queryDocuments(
           'bank_transactions',
@@ -265,10 +280,8 @@ class BankAccountService {
   }
 
   /// Get bank transactions with highest amounts
-  static Future<List<Map<String, dynamic>>> getBankTransactionsWithHighestAmounts(
-    String userId,
-    int limit,
-  ) async {
+  static Future<List<Map<String, dynamic>>>
+  getBankTransactionsWithHighestAmounts(String userId, int limit) async {
     QuerySnapshot snapshot =
         await FirebaseService.queryDocuments(
           'bank_transactions',
@@ -286,15 +299,15 @@ class BankAccountService {
     }
 
     // Sort by amount (highest first) and limit results
-    transactions.sort((a, b) => (b['amount'] ?? 0.0).compareTo(a['amount'] ?? 0.0));
+    transactions.sort(
+      (a, b) => (b['amount'] ?? 0.0).compareTo(a['amount'] ?? 0.0),
+    );
     return transactions.take(limit).toList();
   }
 
   /// Get bank transactions with lowest amounts
-  static Future<List<Map<String, dynamic>>> getBankTransactionsWithLowestAmounts(
-    String userId,
-    int limit,
-  ) async {
+  static Future<List<Map<String, dynamic>>>
+  getBankTransactionsWithLowestAmounts(String userId, int limit) async {
     QuerySnapshot snapshot =
         await FirebaseService.queryDocuments(
           'bank_transactions',
@@ -312,7 +325,9 @@ class BankAccountService {
     }
 
     // Sort by amount (lowest first) and limit results
-    transactions.sort((a, b) => (a['amount'] ?? 0.0).compareTo(b['amount'] ?? 0.0));
+    transactions.sort(
+      (a, b) => (a['amount'] ?? 0.0).compareTo(b['amount'] ?? 0.0),
+    );
     return transactions.take(limit).toList();
   }
-} 
+}

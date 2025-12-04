@@ -79,7 +79,7 @@ class SavingsService {
         }
       }
     } catch (e) {
-      print('Error processing automatic savings: $e');
+      null;
     }
   }
 
@@ -185,5 +185,28 @@ class SavingsService {
     );
 
     return now.isAfter(nextContribution);
+  }
+
+  /// Update savings goal
+  static Future<void> updateSavingsGoal(
+    String goalId,
+    Map<String, dynamic> goalData,
+  ) async {
+    await FirebaseService.updateDocument('savings_goals', goalId, goalData);
+  }
+
+  /// Delete savings goal
+  static Future<void> deleteSavingsGoal(String goalId) async {
+    await FirebaseService.deleteDocument('savings_goals', goalId);
+  }
+
+  /// Delete savings goal with confirmation
+  static Future<bool> deleteSavingsGoalWithConfirmation(String goalId) async {
+    try {
+      await FirebaseService.deleteDocument('savings_goals', goalId);
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 }

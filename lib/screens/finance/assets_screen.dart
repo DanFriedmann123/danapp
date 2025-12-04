@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../config/finance_theme.dart';
 import '../../services/assets_service.dart';
 
@@ -32,103 +33,88 @@ class _AssetsScreenState extends State<AssetsScreen> {
 
   Future<void> _addAsset() async {
     if (_nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter a name')));
-      return;
-    }
-    if (_estimatedValueController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please enter an estimated value')),
-      );
-      return;
-    }
-    if (_depreciationController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please enter monthly depreciation')),
-      );
-      return;
-    }
-    if (_locationController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter a location')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter asset name')),
+        );
+      }
       return;
     }
 
     double? estimatedValue = double.tryParse(_estimatedValueController.text);
     if (estimatedValue == null || estimatedValue <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please enter a valid estimated value')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid estimated value')),
+        );
+      }
       return;
     }
 
     double? monthlyDepreciation = double.tryParse(_depreciationController.text);
     if (monthlyDepreciation == null || monthlyDepreciation < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please enter a valid monthly depreciation')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid monthly depreciation')),
+        );
+      }
       return;
     }
 
     // Show verification dialog
     bool? confirm = await showDialog<bool>(
       context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('Confirm Asset', style: FinanceTheme.headingSmall),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Please verify the asset details:',
-                  style: FinanceTheme.bodyMedium,
-                ),
-                SizedBox(height: FinanceTheme.spacingM),
-                _buildVerificationRow('Name', _nameController.text),
-                _buildVerificationRow('Location', _locationController.text),
-                _buildVerificationRow(
-                  'Estimated Value',
-                  FinanceTheme.formatCurrency(estimatedValue),
-                ),
-                _buildVerificationRow(
-                  'Monthly Depreciation',
-                  FinanceTheme.formatCurrency(monthlyDepreciation),
-                ),
-                if (_purchaseDate != null)
-                  _buildVerificationRow(
-                    'Purchase Date',
-                    '${_purchaseDate!.year}-${_purchaseDate!.month.toString().padLeft(2, '0')}-${_purchaseDate!.day.toString().padLeft(2, '0')}',
-                  ),
-                if (_selectedDate != null)
-                  _buildVerificationRow(
-                    'Date Added',
-                    '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}',
-                  ),
-                if (_notesController.text.isNotEmpty)
-                  _buildVerificationRow('Notes', _notesController.text),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                style: FinanceTheme.textButtonStyle,
-                child: const Text('Edit'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: FinanceTheme.primaryButtonStyle,
-                child: const Text('Confirm & Save'),
-              ),
-            ],
+      builder: (context) => AlertDialog(
+        title: Text('Confirm Asset Details', style: FinanceTheme.headingSmall),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildVerificationRow('Name', _nameController.text.trim()),
+            _buildVerificationRow('Location', _locationController.text.trim()),
+            _buildVerificationRow('Estimated Value', '\$${estimatedValue.toStringAsFixed(2)}'),
+            _buildVerificationRow('Monthly Depreciation', '\$${monthlyDepreciation.toStringAsFixed(2)}'),
+            _buildVerificationRow('Purchase Date', _purchaseDate != null 
+                ? '${_purchaseDate!.year}-${_purchaseDate!.month.toString().padLeft(2, '0')}-${_purchaseDate!.day.toString().padLeft(2, '0')}'
+                : 'Not specified'),
+            _buildVerificationRow('Date Added', _selectedDate != null 
+                ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
+                : 'Today'),
+            if (_notesController.text.trim().isNotEmpty)
+              _buildVerificationRow('Notes', _notesController.text.trim()),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: FinanceTheme.textButtonStyle,
+            child: const Text('Edit'),
           ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FinanceTheme.primaryButtonStyle,
+            child: const Text('Confirm & Save'),
+          ),
+        ],
+      ),
     );
 
     if (confirm == true) {
+      // Close the add dialog immediately
+      Navigator.pop(context);
+      
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please sign in to add assets')),
+          );
+        }
+        return;
+      }
+
       Map<String, dynamic> assetData = {
-        'user_id': 'user123', // Replace with actual user ID
+        'user_id': user.uid,
         'name': _nameController.text.trim(),
         'location': _locationController.text.trim(),
         'estimated_value': estimatedValue,
@@ -150,13 +136,12 @@ class _AssetsScreenState extends State<AssetsScreen> {
       _selectedDate = null;
       _notesController.clear();
 
-      // Close dialog
-      Navigator.pop(context);
-
       // Show success message
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Asset added successfully!')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Asset added successfully!')));
+      }
     }
   }
 
@@ -182,187 +167,189 @@ class _AssetsScreenState extends State<AssetsScreen> {
   }
 
   void _showAddAssetDialog() {
-    showDialog(
-      context: context,
-      builder:
-          (context) => AlertDialog(
-            title: Text('Add Asset', style: FinanceTheme.headingSmall),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Name
-                  TextField(
-                    controller: _nameController,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Asset Name',
-                      hintText: 'e.g., iPhone 13, MacBook Pro',
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: Text('Add Asset', style: FinanceTheme.headingSmall),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Name
+                    TextField(
+                      controller: _nameController,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Asset Name',
+                        hintText: 'e.g., iPhone 13, MacBook Pro',
+                      ),
                     ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
+                    SizedBox(height: FinanceTheme.spacingM),
 
-                  // Location
-                  TextField(
-                    controller: _locationController,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Location',
-                      hintText: 'e.g., Home office, Living room',
+                    // Location
+                    TextField(
+                      controller: _locationController,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Location',
+                        hintText: 'e.g., Home office, Living room',
+                      ),
                     ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
+                    SizedBox(height: FinanceTheme.spacingM),
 
-                  // Estimated Value
-                  TextField(
-                    controller: _estimatedValueController,
-                    keyboardType: TextInputType.number,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Estimated Value (₪)',
-                      hintText: '5000.00',
+                    // Estimated Value
+                    TextField(
+                      controller: _estimatedValueController,
+                      keyboardType: TextInputType.number,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Estimated Value (₪)',
+                        hintText: '5000.00',
+                      ),
                     ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
+                    SizedBox(height: FinanceTheme.spacingM),
 
-                  // Monthly Depreciation
-                  TextField(
-                    controller: _depreciationController,
-                    keyboardType: TextInputType.number,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Monthly Depreciation (₪)',
-                      hintText: '100.00',
+                    // Monthly Depreciation
+                    TextField(
+                      controller: _depreciationController,
+                      keyboardType: TextInputType.number,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Monthly Depreciation (₪)',
+                        hintText: '100.00',
+                      ),
                     ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
+                    SizedBox(height: FinanceTheme.spacingM),
 
-                  // Purchase Date
-                  InkWell(
-                    onTap: () async {
-                      DateTime? pickedDate = await showDatePicker(
-                        context: context,
-                        initialDate: _purchaseDate ?? DateTime.now(),
-                        firstDate: DateTime.now().subtract(
-                          const Duration(days: 365 * 10),
+                    // Purchase Date
+                    InkWell(
+                      onTap: () async {
+                        DateTime? pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate: _purchaseDate ?? DateTime.now(),
+                          firstDate: DateTime.now().subtract(
+                            const Duration(days: 365 * 10),
+                          ),
+                          lastDate: DateTime.now(),
+                        );
+                        if (pickedDate != null && mounted) {
+                          setState(() {
+                            _purchaseDate = pickedDate;
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
                         ),
-                        lastDate: DateTime.now(),
-                      );
-                      if (pickedDate != null) {
-                        setState(() {
-                          _purchaseDate = pickedDate;
-                        });
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: FinanceTheme.borderColor),
-                        borderRadius: BorderRadius.circular(8),
-                        color: FinanceTheme.backgroundColor,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_today,
-                            color: FinanceTheme.textSecondary,
-                            size: 20,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            _purchaseDate != null
-                                ? '${_purchaseDate!.year}-${_purchaseDate!.month.toString().padLeft(2, '0')}-${_purchaseDate!.day.toString().padLeft(2, '0')}'
-                                : 'Select Purchase Date (Optional)',
-                            style: FinanceTheme.bodyMedium.copyWith(
-                              color:
-                                  _purchaseDate != null
-                                      ? FinanceTheme.textPrimary
-                                      : FinanceTheme.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
-
-                  // Date Added
-                  InkWell(
-                    onTap: () async {
-                      DateTime? pickedDate = await showDatePicker(
-                        context: context,
-                        initialDate: _selectedDate ?? DateTime.now(),
-                        firstDate: DateTime.now().subtract(
-                          const Duration(days: 365 * 10),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: FinanceTheme.borderColor),
+                          borderRadius: BorderRadius.circular(8),
+                          color: FinanceTheme.backgroundColor,
                         ),
-                        lastDate: DateTime.now(),
-                      );
-                      if (pickedDate != null) {
-                        setState(() {
-                          _selectedDate = pickedDate;
-                        });
-                      }
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: FinanceTheme.borderColor),
-                        borderRadius: BorderRadius.circular(8),
-                        color: FinanceTheme.backgroundColor,
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_today,
-                            color: FinanceTheme.textSecondary,
-                            size: 20,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            _selectedDate != null
-                                ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
-                                : 'Select Date Added (Optional)',
-                            style: FinanceTheme.bodyMedium.copyWith(
-                              color:
-                                  _selectedDate != null
-                                      ? FinanceTheme.textPrimary
-                                      : FinanceTheme.textSecondary,
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today,
+                              color: FinanceTheme.textSecondary,
+                              size: 20,
                             ),
-                          ),
-                        ],
+                            SizedBox(width: 8),
+                            Text(
+                              _purchaseDate != null
+                                  ? '${_purchaseDate!.year}-${_purchaseDate!.month.toString().padLeft(2, '0')}-${_purchaseDate!.day.toString().padLeft(2, '0')}'
+                                  : 'Select Purchase Date (Optional)',
+                              style: FinanceTheme.bodyMedium.copyWith(
+                                color:
+                                    _purchaseDate != null
+                                        ? FinanceTheme.textPrimary
+                                        : FinanceTheme.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  SizedBox(height: FinanceTheme.spacingM),
+                    SizedBox(height: FinanceTheme.spacingM),
 
-                  // Notes
-                  TextField(
-                    controller: _notesController,
-                    maxLines: 3,
-                    decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Notes (Optional)',
-                      hintText: 'Additional details...',
+                    // Date Added
+                    InkWell(
+                      onTap: () async {
+                        DateTime? pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate: _selectedDate ?? DateTime.now(),
+                          firstDate: DateTime.now().subtract(
+                            const Duration(days: 365 * 10),
+                          ),
+                          lastDate: DateTime.now(),
+                        );
+                        if (pickedDate != null && mounted) {
+                          setState(() {
+                            _selectedDate = pickedDate;
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: FinanceTheme.borderColor),
+                          borderRadius: BorderRadius.circular(8),
+                          color: FinanceTheme.backgroundColor,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today,
+                              color: FinanceTheme.textSecondary,
+                              size: 20,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              _selectedDate != null
+                                  ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
+                                  : 'Select Date Added (Optional)',
+                              style: FinanceTheme.bodyMedium.copyWith(
+                                color:
+                                    _selectedDate != null
+                                        ? FinanceTheme.textPrimary
+                                        : FinanceTheme.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                ],
+                    SizedBox(height: FinanceTheme.spacingM),
+
+                    // Notes
+                    TextField(
+                      controller: _notesController,
+                      maxLines: 3,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Notes (Optional)',
+                        hintText: 'Additional details...',
+                      ),
+                    ),
+                  ],
+                ),
               ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: FinanceTheme.textButtonStyle,
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: _addAsset,
+                  style: FinanceTheme.primaryButtonStyle,
+                  child: const Text('Add Asset'),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                style: FinanceTheme.textButtonStyle,
-                child: const Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: _addAsset,
-                style: FinanceTheme.primaryButtonStyle,
-                child: const Text('Add Asset'),
-              ),
-            ],
-          ),
-    );
+      );
+    }
   }
 
   Widget _buildAssetsSummary(String userId) {
@@ -628,6 +615,28 @@ class _AssetsScreenState extends State<AssetsScreen> {
                           padding: const EdgeInsets.only(top: 8),
                           child: Text(notes, style: FinanceTheme.bodySmall),
                         ),
+                      SizedBox(height: FinanceTheme.spacingS),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            onPressed: () => _showEditAssetDialog(doc.id, data),
+                            icon: Icon(
+                              Icons.edit_outlined,
+                              color: FinanceTheme.primaryColor,
+                              size: 20,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => _deleteAsset(doc.id),
+                            icon: Icon(
+                              Icons.delete_outline,
+                              color: FinanceTheme.dangerColor,
+                              size: 20,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -640,9 +649,327 @@ class _AssetsScreenState extends State<AssetsScreen> {
     );
   }
 
+  void _showEditAssetDialog(String assetId, Map<String, dynamic> data) {
+    // Pre-fill the form with existing data
+    _nameController.text = data['name'] ?? '';
+    _locationController.text = data['location'] ?? '';
+    _estimatedValueController.text = (data['estimated_value'] ?? 0.0).toString();
+    _depreciationController.text = (data['monthly_depreciation'] ?? 0.0).toString();
+    _purchaseDate = data['purchase_date']?.toDate();
+    _selectedDate = data['date_added']?.toDate();
+    _notesController.text = data['notes'] ?? '';
+
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Edit Asset', style: FinanceTheme.headingSmall),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Name
+                TextField(
+                  controller: _nameController,
+                  decoration: FinanceTheme.inputDecoration.copyWith(
+                    labelText: 'Asset Name',
+                    hintText: 'e.g., iPhone 13, MacBook Pro',
+                  ),
+                ),
+                SizedBox(height: FinanceTheme.spacingM),
+
+                // Location
+                TextField(
+                  controller: _locationController,
+                  decoration: FinanceTheme.inputDecoration.copyWith(
+                    labelText: 'Location',
+                    hintText: 'e.g., Home office, Living room',
+                  ),
+                ),
+                SizedBox(height: FinanceTheme.spacingM),
+
+                // Estimated Value
+                TextField(
+                  controller: _estimatedValueController,
+                  keyboardType: TextInputType.number,
+                  decoration: FinanceTheme.inputDecoration.copyWith(
+                    labelText: 'Estimated Value (₪)',
+                    hintText: '5000.00',
+                  ),
+                ),
+                SizedBox(height: FinanceTheme.spacingM),
+
+                // Monthly Depreciation
+                TextField(
+                  controller: _depreciationController,
+                  keyboardType: TextInputType.number,
+                  decoration: FinanceTheme.inputDecoration.copyWith(
+                    labelText: 'Monthly Depreciation (₪)',
+                    hintText: '100.00',
+                  ),
+                ),
+                SizedBox(height: FinanceTheme.spacingM),
+
+                // Purchase Date
+                InkWell(
+                  onTap: () async {
+                    DateTime? pickedDate = await showDatePicker(
+                      context: context,
+                      initialDate: _purchaseDate ?? DateTime.now(),
+                      firstDate: DateTime.now().subtract(
+                        const Duration(days: 365 * 10),
+                      ),
+                      lastDate: DateTime.now(),
+                    );
+                    if (pickedDate != null && mounted) {
+                      setState(() {
+                        _purchaseDate = pickedDate;
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: FinanceTheme.borderColor),
+                      borderRadius: BorderRadius.circular(8),
+                      color: FinanceTheme.backgroundColor,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_today,
+                          color: FinanceTheme.textSecondary,
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          _purchaseDate != null
+                              ? '${_purchaseDate!.year}-${_purchaseDate!.month.toString().padLeft(2, '0')}-${_purchaseDate!.day.toString().padLeft(2, '0')}'
+                              : 'Select Purchase Date (Optional)',
+                          style: FinanceTheme.bodyMedium.copyWith(
+                            color: _purchaseDate != null
+                                ? FinanceTheme.textPrimary
+                                : FinanceTheme.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(height: FinanceTheme.spacingM),
+
+                // Date Added
+                InkWell(
+                  onTap: () async {
+                    DateTime? pickedDate = await showDatePicker(
+                      context: context,
+                      initialDate: _selectedDate ?? DateTime.now(),
+                      firstDate: DateTime.now().subtract(
+                        const Duration(days: 365 * 10),
+                      ),
+                      lastDate: DateTime.now(),
+                    );
+                    if (pickedDate != null && mounted) {
+                      setState(() {
+                        _selectedDate = pickedDate;
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: FinanceTheme.borderColor),
+                      borderRadius: BorderRadius.circular(8),
+                      color: FinanceTheme.backgroundColor,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_today,
+                          color: FinanceTheme.textSecondary,
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          _selectedDate != null
+                              ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
+                              : 'Select Date Added (Optional)',
+                          style: FinanceTheme.bodyMedium.copyWith(
+                            color: _selectedDate != null
+                                ? FinanceTheme.textPrimary
+                                : FinanceTheme.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(height: FinanceTheme.spacingM),
+
+                // Notes
+                TextField(
+                  controller: _notesController,
+                  maxLines: 3,
+                  decoration: FinanceTheme.inputDecoration.copyWith(
+                    labelText: 'Notes (Optional)',
+                    hintText: 'Additional details...',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              style: FinanceTheme.textButtonStyle,
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => _updateAsset(assetId),
+              style: FinanceTheme.primaryButtonStyle,
+              child: const Text('Update'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Future<void> _updateAsset(String assetId) async {
+    if (_nameController.text.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter an asset name')),
+        );
+      }
+      return;
+    }
+
+    double? estimatedValue = double.tryParse(_estimatedValueController.text);
+    if (estimatedValue == null || estimatedValue < 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid estimated value')),
+        );
+      }
+      return;
+    }
+
+    double? depreciation = double.tryParse(_depreciationController.text);
+    if (depreciation == null || depreciation < 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid depreciation amount')),
+        );
+      }
+      return;
+    }
+
+    // Close the edit dialog immediately
+    Navigator.pop(context);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please sign in to update assets')),
+          );
+        }
+        return;
+      }
+
+      Map<String, dynamic> assetData = {
+        'name': _nameController.text.trim(),
+        'location': _locationController.text.trim(),
+        'estimated_value': estimatedValue,
+        'monthly_depreciation': depreciation,
+        'purchase_date': _purchaseDate,
+        'date_added': _selectedDate ?? DateTime.now(),
+        'notes': _notesController.text.trim(),
+      };
+
+      await AssetsService.updateAsset(assetId, assetData);
+
+      // Clear form
+      _nameController.clear();
+      _locationController.clear();
+      _estimatedValueController.clear();
+      _depreciationController.clear();
+      _purchaseDate = null;
+      _selectedDate = null;
+      _notesController.clear();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Asset updated successfully!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteAsset(String assetId) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete Asset', style: FinanceTheme.headingSmall),
+        content: const Text('Are you sure you want to delete this asset?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: FinanceTheme.textButtonStyle,
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: FinanceTheme.dangerColor,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await AssetsService.deleteAsset(assetId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Asset deleted successfully!')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    String userId = 'user123'; // Replace with actual user ID
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please sign in to view assets')),
+      );
+    }
+    String userId = user.uid;
 
     return Scaffold(
       appBar: AppBar(

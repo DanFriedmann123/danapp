@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../config/finance_theme.dart';
 import '../../services/cash_service.dart';
+import '../../services/currency_service.dart';
+import '../../services/preferences_service.dart';
+import '../../widgets/currency_converter.dart';
 
 class CashScreen extends StatefulWidget {
   const CashScreen({super.key});
@@ -15,8 +19,25 @@ class _CashScreenState extends State<CashScreen> {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _locationController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
+
   String _selectedType = 'cash';
+  String _selectedCurrency = 'ILS';
+  String _mainCurrency = 'ILS';
   DateTime? _selectedDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMainCurrency();
+  }
+
+  Future<void> _loadMainCurrency() async {
+    final mainCurrency = await PreferencesService.getMainCurrency();
+    setState(() {
+      _mainCurrency = mainCurrency;
+      _selectedCurrency = mainCurrency;
+    });
+  }
 
   @override
   void dispose() {
@@ -29,29 +50,21 @@ class _CashScreenState extends State<CashScreen> {
 
   Future<void> _addCashEntry() async {
     if (_descriptionController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter a description')));
-      return;
-    }
-    if (_amountController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter an amount')));
-      return;
-    }
-    if (_locationController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter a location')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a description')),
+        );
+      }
       return;
     }
 
     double? amount = double.tryParse(_amountController.text);
     if (amount == null || amount <= 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Please enter a valid amount')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid amount')),
+        );
+      }
       return;
     }
 
@@ -65,28 +78,27 @@ class _CashScreenState extends State<CashScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Please verify the cash details:',
-                  style: FinanceTheme.bodyMedium,
-                ),
-                SizedBox(height: FinanceTheme.spacingM),
                 _buildVerificationRow('Type', _getTypeName(_selectedType)),
                 _buildVerificationRow(
                   'Description',
-                  _descriptionController.text,
+                  _descriptionController.text.trim(),
                 ),
-                _buildVerificationRow('Location', _locationController.text),
+                _buildVerificationRow(
+                  'Location',
+                  _locationController.text.trim(),
+                ),
                 _buildVerificationRow(
                   'Amount',
-                  FinanceTheme.formatCurrency(amount),
+                  '\$${amount.toStringAsFixed(2)}',
                 ),
-                if (_selectedDate != null)
-                  _buildVerificationRow(
-                    'Date',
-                    '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}',
-                  ),
-                if (_notesController.text.isNotEmpty)
-                  _buildVerificationRow('Notes', _notesController.text),
+                _buildVerificationRow(
+                  'Date',
+                  _selectedDate != null
+                      ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
+                      : 'Today',
+                ),
+                if (_notesController.text.trim().isNotEmpty)
+                  _buildVerificationRow('Notes', _notesController.text.trim()),
               ],
             ),
             actions: [
@@ -105,12 +117,28 @@ class _CashScreenState extends State<CashScreen> {
     );
 
     if (confirm == true) {
+      // Close the add dialog immediately
+      Navigator.pop(context);
+
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please sign in to add cash transactions'),
+            ),
+          );
+        }
+        return;
+      }
+
       Map<String, dynamic> cashData = {
-        'user_id': 'user123', // Replace with actual user ID
+        'user_id': user.uid,
         'type': _selectedType,
         'description': _descriptionController.text.trim(),
         'location': _locationController.text.trim(),
         'amount': amount,
+        'currency': _selectedCurrency,
         'date': _selectedDate ?? DateTime.now(),
         'notes': _notesController.text.trim(),
         'created_at': FieldValue.serverTimestamp(),
@@ -126,13 +154,12 @@ class _CashScreenState extends State<CashScreen> {
       _selectedDate = null;
       _notesController.clear();
 
-      // Close dialog
-      Navigator.pop(context);
-
       // Show success message
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Cash entry added successfully!')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cash entry added successfully!')),
+        );
+      }
     }
   }
 
@@ -177,11 +204,189 @@ class _CashScreenState extends State<CashScreen> {
   }
 
   void _showAddCashEntryDialog() {
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: Text('Add Cash Entry', style: FinanceTheme.headingSmall),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Type
+                    DropdownButtonFormField<String>(
+                      value: _selectedType,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Type',
+                      ),
+                      items: [
+                        DropdownMenuItem(value: 'cash', child: Text('Cash')),
+                        DropdownMenuItem(
+                          value: 'foreign_currency',
+                          child: Text('Foreign Currency'),
+                        ),
+                        DropdownMenuItem(value: 'coins', child: Text('Coins')),
+                        DropdownMenuItem(
+                          value: 'gift_cards',
+                          child: Text('Gift Cards'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'vouchers',
+                          child: Text('Vouchers'),
+                        ),
+                        DropdownMenuItem(value: 'other', child: Text('Other')),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedType = value!;
+                        });
+                      },
+                    ),
+                    SizedBox(height: FinanceTheme.spacingM),
+
+                    // Description
+                    TextField(
+                      controller: _descriptionController,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Description',
+                        hintText: 'e.g., Emergency cash, USD dollars',
+                      ),
+                    ),
+                    SizedBox(height: FinanceTheme.spacingM),
+
+                    // Location
+                    TextField(
+                      controller: _locationController,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Location',
+                        hintText: 'e.g., Wallet, Home safe, Car',
+                      ),
+                    ),
+                    SizedBox(height: FinanceTheme.spacingM),
+
+                    // Currency
+                    CurrencySelector(
+                      selectedCurrency: _selectedCurrency,
+                      onCurrencyChanged: (currency) {
+                        setState(() {
+                          _selectedCurrency = currency;
+                        });
+                      },
+                      label: 'Currency',
+                    ),
+                    SizedBox(height: FinanceTheme.spacingM),
+
+                    // Amount
+                    TextField(
+                      controller: _amountController,
+                      keyboardType: TextInputType.number,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Amount',
+                        hintText: '500.00',
+                        suffixText:
+                            CurrencyService.getCurrencySymbols()[_selectedCurrency] ??
+                            _selectedCurrency,
+                      ),
+                    ),
+                    SizedBox(height: FinanceTheme.spacingM),
+
+                    // Date
+                    InkWell(
+                      onTap: () async {
+                        DateTime? pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate: _selectedDate ?? DateTime.now(),
+                          firstDate: DateTime.now().subtract(
+                            const Duration(days: 365 * 10),
+                          ),
+                          lastDate: DateTime.now(),
+                        );
+                        if (pickedDate != null && mounted) {
+                          setState(() {
+                            _selectedDate = pickedDate;
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: FinanceTheme.borderColor),
+                          borderRadius: BorderRadius.circular(8),
+                          color: FinanceTheme.backgroundColor,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today,
+                              color: FinanceTheme.textSecondary,
+                              size: 20,
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              _selectedDate != null
+                                  ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
+                                  : 'Select Date (Optional)',
+                              style: FinanceTheme.bodyMedium.copyWith(
+                                color:
+                                    _selectedDate != null
+                                        ? FinanceTheme.textPrimary
+                                        : FinanceTheme.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: FinanceTheme.spacingM),
+
+                    // Notes
+                    TextField(
+                      controller: _notesController,
+                      maxLines: 3,
+                      decoration: FinanceTheme.inputDecoration.copyWith(
+                        labelText: 'Notes (Optional)',
+                        hintText: 'Additional details...',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: FinanceTheme.textButtonStyle,
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: _addCashEntry,
+                  style: FinanceTheme.primaryButtonStyle,
+                  child: const Text('Add Entry'),
+                ),
+              ],
+            ),
+      );
+    }
+  }
+
+  void _showEditCashEntryDialog(String entryId, Map<String, dynamic> data) {
+    // Pre-fill the form with existing data
+    _descriptionController.text = data['description'] ?? '';
+    _amountController.text = (data['amount'] ?? 0.0).toString();
+    _locationController.text = data['location'] ?? '';
+    _selectedType = data['type'] ?? 'cash';
+    _selectedCurrency = data['currency'] ?? 'ILS';
+    _selectedDate = data['date']?.toDate();
+    _notesController.text = data['notes'] ?? '';
+
     showDialog(
       context: context,
       builder:
           (context) => AlertDialog(
-            title: Text('Add Cash Entry', style: FinanceTheme.headingSmall),
+            title: Text('Edit Cash Entry', style: FinanceTheme.headingSmall),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -237,13 +442,28 @@ class _CashScreenState extends State<CashScreen> {
                   ),
                   SizedBox(height: FinanceTheme.spacingM),
 
+                  // Currency
+                  CurrencySelector(
+                    selectedCurrency: _selectedCurrency,
+                    onCurrencyChanged: (currency) {
+                      setState(() {
+                        _selectedCurrency = currency;
+                      });
+                    },
+                    label: 'Currency',
+                  ),
+                  SizedBox(height: FinanceTheme.spacingM),
+
                   // Amount
                   TextField(
                     controller: _amountController,
                     keyboardType: TextInputType.number,
                     decoration: FinanceTheme.inputDecoration.copyWith(
-                      labelText: 'Amount (₪)',
+                      labelText: 'Amount',
                       hintText: '500.00',
+                      suffixText:
+                          CurrencyService.getCurrencySymbols()[_selectedCurrency] ??
+                          _selectedCurrency,
                     ),
                   ),
                   SizedBox(height: FinanceTheme.spacingM),
@@ -255,45 +475,31 @@ class _CashScreenState extends State<CashScreen> {
                         context: context,
                         initialDate: _selectedDate ?? DateTime.now(),
                         firstDate: DateTime.now().subtract(
-                          const Duration(days: 365 * 10),
+                          const Duration(days: 365),
                         ),
-                        lastDate: DateTime.now(),
+                        lastDate: DateTime.now().add(const Duration(days: 30)),
                       );
-                      if (pickedDate != null) {
+                      if (pickedDate != null && mounted) {
                         setState(() {
                           _selectedDate = pickedDate;
                         });
                       }
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
+                      padding: FinanceTheme.cardPadding,
+                      decoration: FinanceTheme.cardDecoration.copyWith(
                         border: Border.all(color: FinanceTheme.borderColor),
-                        borderRadius: BorderRadius.circular(8),
-                        color: FinanceTheme.backgroundColor,
                       ),
                       child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Icon(
-                            Icons.calendar_today,
-                            color: FinanceTheme.textSecondary,
-                            size: 20,
-                          ),
-                          SizedBox(width: 8),
                           Text(
                             _selectedDate != null
                                 ? '${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}'
-                                : 'Select Date (Optional)',
-                            style: FinanceTheme.bodyMedium.copyWith(
-                              color:
-                                  _selectedDate != null
-                                      ? FinanceTheme.textPrimary
-                                      : FinanceTheme.textSecondary,
-                            ),
+                                : 'Select Date',
+                            style: FinanceTheme.bodyMedium,
                           ),
+                          const Icon(Icons.calendar_today),
                         ],
                       ),
                     ),
@@ -319,13 +525,121 @@ class _CashScreenState extends State<CashScreen> {
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: _addCashEntry,
+                onPressed: () => _updateCashEntry(entryId),
                 style: FinanceTheme.primaryButtonStyle,
-                child: const Text('Add Entry'),
+                child: const Text('Update'),
               ),
             ],
           ),
     );
+  }
+
+  void _updateCashEntry(String entryId) async {
+    final amount = double.tryParse(_amountController.text);
+    if (amount == null || amount <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter a valid amount')),
+        );
+      }
+      return;
+    }
+
+    // Close the edit dialog immediately
+    Navigator.pop(context);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please sign in to update cash transactions'),
+            ),
+          );
+        }
+        return;
+      }
+
+      Map<String, dynamic> cashData = {
+        'user_id': user.uid,
+        'type': _selectedType,
+        'description': _descriptionController.text.trim(),
+        'location': _locationController.text.trim(),
+        'amount': amount,
+        'currency': _selectedCurrency,
+        'date': _selectedDate ?? DateTime.now(),
+        'notes': _notesController.text.trim(),
+      };
+
+      await CashService.updateCashEntry(entryId, cashData);
+
+      // Clear form
+      _descriptionController.clear();
+      _amountController.clear();
+      _locationController.clear();
+      _selectedType = 'cash';
+      _selectedDate = null;
+      _notesController.clear();
+
+      // Show success message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cash entry updated successfully!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating cash entry: $e')),
+        );
+      }
+    }
+  }
+
+  void _deleteCashEntry(String entryId) async {
+    // Show confirmation dialog
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text('Delete Cash Entry', style: FinanceTheme.headingSmall),
+            content: const Text(
+              'Are you sure you want to delete this cash entry?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                style: FinanceTheme.textButtonStyle,
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: FinanceTheme.dangerColor,
+                ),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+    );
+
+    if (confirm == true) {
+      try {
+        await CashService.deleteCashEntry(entryId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Cash entry deleted successfully!')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting cash entry: $e')),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildCashSummary(String userId) {
@@ -489,6 +803,7 @@ class _CashScreenState extends State<CashScreen> {
               String description = data['description'] ?? '';
               String location = data['location'] ?? '';
               double amount = data['amount'] ?? 0.0;
+              String currency = data['currency'] ?? 'ILS';
               String type = data['type'] ?? 'cash';
               DateTime? date = data['date']?.toDate();
               String notes = data['notes'] ?? '';
@@ -525,10 +840,55 @@ class _CashScreenState extends State<CashScreen> {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
                               Text(
-                                FinanceTheme.formatCurrency(amount),
+                                CurrencyService.formatCurrency(
+                                  amount,
+                                  currency,
+                                ),
                                 style: FinanceTheme.valueSmall,
                               ),
+                              if (currency != _mainCurrency)
+                                FutureBuilder<double>(
+                                  future: CurrencyService.convertCurrency(
+                                    amount,
+                                    currency,
+                                    _mainCurrency,
+                                  ),
+                                  builder: (context, snapshot) {
+                                    if (snapshot.hasData) {
+                                      return Text(
+                                        '≈ ${CurrencyService.formatCurrency(snapshot.data!, _mainCurrency)}',
+                                        style: FinanceTheme.bodySmall.copyWith(
+                                          color: FinanceTheme.textSecondary,
+                                        ),
+                                      );
+                                    }
+                                    return const SizedBox.shrink();
+                                  },
+                                ),
                             ],
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: FinanceTheme.spacingS),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            onPressed:
+                                () => _showEditCashEntryDialog(doc.id, data),
+                            icon: Icon(
+                              Icons.edit_outlined,
+                              color: FinanceTheme.primaryColor,
+                              size: 20,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => _deleteCashEntry(doc.id),
+                            icon: Icon(
+                              Icons.delete_outline,
+                              color: FinanceTheme.dangerColor,
+                              size: 20,
+                            ),
                           ),
                         ],
                       ),
@@ -561,7 +921,13 @@ class _CashScreenState extends State<CashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    String userId = 'user123'; // Replace with actual user ID
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please sign in to view cash')),
+      );
+    }
+    String userId = user.uid;
 
     return Scaffold(
       appBar: AppBar(

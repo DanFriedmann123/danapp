@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../config/finance_theme.dart';
 import '../../services/reports_service.dart';
 import '../../services/expenses_service.dart';
@@ -19,7 +20,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    String userId = 'user123'; // Replace with actual user ID
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please sign in to view reports')),
+      );
+    }
+    String userId = user.uid;
 
     return Scaffold(
       appBar: AppBar(
@@ -263,7 +270,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               height: 80,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: healthColor.withOpacity(0.1),
+                                color: healthColor.withValues(alpha: 0.1),
                                 border: Border.all(
                                   color: healthColor,
                                   width: 3,
@@ -271,7 +278,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               ),
                               child: Center(
                                 child: Text(
-                                  '${overallHealth.toStringAsFixed(0)}',
+                                  overallHealth.toStringAsFixed(0),
                                   style: GoogleFonts.inter(
                                     fontSize: 20,
                                     fontWeight: FontWeight.w600,
@@ -331,7 +338,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
           SizedBox(width: 8),
           Text(
-            '${score.toStringAsFixed(0)}',
+            score.toStringAsFixed(0),
             style: FinanceTheme.bodySmall.copyWith(color: color),
           ),
         ],
@@ -472,7 +479,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
         if (snapshot.hasData) {
           var data = snapshot.data!;
           double totalExpenses = data['total_expenses'] ?? 0.0;
-          double totalIncome = data['total_income'] ?? 0.0;
           double expenseRatio = data['expense_ratio'] ?? 0.0;
           List<Map<String, dynamic>> topCategories =
               List<Map<String, dynamic>>.from(data['top_categories'] ?? []);
@@ -566,7 +572,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           ],
                         ),
                       );
-                    }).toList(),
+                    }),
                   ],
                 ],
               ),
@@ -592,7 +598,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
           var data = snapshot.data!;
           double totalSaved = data['total_saved'] ?? 0.0;
           double totalTarget = data['total_target'] ?? 0.0;
-          double progress = data['progress'] ?? 0.0;
           int activeGoals = data['active_goals'] ?? 0;
           double completionRate = data['completion_rate'] ?? 0.0;
 
@@ -1007,7 +1012,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           ],
                         ),
                       );
-                    }).toList(),
+                    }),
                   ],
                 ],
               ),
@@ -1065,7 +1070,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
             );
           }
 
-          double currentBalance = data['current_balance'] ?? 0.0;
           double predictedBalance = data['predicted_balance'] ?? 0.0;
           double predictedNetWorth = data['predicted_net_worth'] ?? 0.0;
           double predictedDebt = data['predicted_debt'] ?? 0.0;
@@ -1099,7 +1103,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                   SizedBox(height: FinanceTheme.spacingM),
                   Text(
-                    '${monthsToTarget} months from now',
+                    '$monthsToTarget months from now',
                     style: FinanceTheme.bodySmall.copyWith(
                       color: FinanceTheme.textSecondary,
                     ),

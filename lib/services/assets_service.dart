@@ -97,7 +97,6 @@ class AssetsService {
       await FirebaseService.deleteDocument('assets', assetId);
       return true;
     } catch (e) {
-      print('Error deleting asset: $e');
       return false;
     }
   }

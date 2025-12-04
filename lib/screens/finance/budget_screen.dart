@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../../config/finance_theme.dart';
 
 class BudgetScreen extends StatelessWidget {

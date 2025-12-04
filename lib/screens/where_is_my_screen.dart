@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../services/where_is_my_service.dart';
 import '../config/brain_theme.dart';
 
@@ -33,7 +33,16 @@ class _WhereIsMyScreenState extends State<WhereIsMyScreen> {
       Navigator.pop(context);
 
       try {
-        String userId = 'user123'; // Replace with actual user ID
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Please sign in to add items')),
+            );
+          }
+          return;
+        }
+        String userId = user.uid;
 
         LentItem item = LentItem(
           id: '',
@@ -54,19 +63,23 @@ class _WhereIsMyScreenState extends State<WhereIsMyScreen> {
         _dateController.clear();
         _notesController.clear();
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Item added successfully!'),
-            backgroundColor: BrainTheme.successColor,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Item added successfully!'),
+              backgroundColor: BrainTheme.successColor,
+            ),
+          );
+        }
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: BrainTheme.dangerColor,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: BrainTheme.dangerColor,
+            ),
+          );
+        }
       }
     }
   }
@@ -75,36 +88,49 @@ class _WhereIsMyScreenState extends State<WhereIsMyScreen> {
     try {
       await WhereIsMyService.toggleReturnedStatus(itemId, !currentStatus);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error updating status: $e'),
-          backgroundColor: BrainTheme.dangerColor,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating status: $e'),
+            backgroundColor: BrainTheme.dangerColor,
+          ),
+        );
+      }
     }
   }
 
   Future<void> _deleteItem(String itemId) async {
     try {
       await WhereIsMyService.deleteLentItem(itemId);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Item deleted successfully!'),
-          backgroundColor: BrainTheme.successColor,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Item deleted successfully!'),
+            backgroundColor: BrainTheme.successColor,
+          ),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error deleting item: $e'),
-          backgroundColor: BrainTheme.dangerColor,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting item: $e'),
+            backgroundColor: BrainTheme.dangerColor,
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Please sign in to view items')),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Where Is My', style: BrainTheme.headingSmall),
@@ -126,7 +152,7 @@ class _WhereIsMyScreenState extends State<WhereIsMyScreen> {
             SizedBox(height: BrainTheme.spacingL),
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                stream: WhereIsMyService.getUserLentItems('user123'),
+                stream: WhereIsMyService.getUserLentItems(user.uid),
                 builder: (context, snapshot) {
                   if (snapshot.hasData) {
                     if (snapshot.data!.docs.isEmpty) {
@@ -175,9 +201,11 @@ class _WhereIsMyScreenState extends State<WhereIsMyScreen> {
                             leading: CircleAvatar(
                               backgroundColor:
                                   isReturned
-                                      ? BrainTheme.successColor.withOpacity(0.1)
-                                      : BrainTheme.warningColor.withOpacity(
-                                        0.1,
+                                      ? BrainTheme.successColor.withValues(
+                                        alpha: 0.1,
+                                      )
+                                      : BrainTheme.warningColor.withValues(
+                                        alpha: 0.1,
                                       ),
                               child: Icon(
                                 isReturned ? Icons.check_circle : Icons.pending,
